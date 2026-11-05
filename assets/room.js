@@ -1,6 +1,10 @@
 /* Paper Games — shared invite-room layer
    Host-authoritative rooms over BroadcastChannel (same browser) or Trystero (P2P).
-   The game owns the rules; this layer owns seats, codes, and snapshots. */
+   The game owns the rules; this layer owns seats, codes, and snapshots.
+
+   Rooms survive a host leaving: every peer keeps the last snapshot, and the
+   lowest online seat is promoted. Seats survive a browser restart: each
+   browser keeps a secret resume token per room. */
 (function(){
   'use strict';
 
@@ -8,6 +12,8 @@
   const APP_ID = 'paper-games-v1';
   const CDN = 'https://cdn.jsdelivr.net/npm/trystero/+esm';
   const SEAT_COLORS = ['#bf5a4e', '#6f8f5f', '#c99a2c', '#5f7f9f'];
+  const HOST_SILENCE = 6500;   // ms without a host word before we elect a new one
+  const PEER_SILENCE = 7000;   // ms without a ping before the host marks a seat away
 
   let opts = {};
   let modal = null;
@@ -26,9 +32,16 @@
   let joinTries = 0;
   let hostId = null;
   let hostPeer = null;
+  let epoch = 0;            // incremented on every host handover
+  let lastHostSeen = 0;
+  let electing = false;
+  let skipped = {};         // seats that stayed silent when we looked for a new host
   let cachedName = null;
   let heartbeatTimer = null;
+  let hostPingTimer = null;
+  let hostWatchTimer = null;
   let pingTimer = null;
+  let electTimer = null;
   let p2pError = null;
   let localForced = false;
 
@@ -65,6 +78,63 @@
     let out = '';
     for (let i = 0; i < 7; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
     return out;
+  }
+
+  function randToken(){
+    const bytes = new Uint8Array(16);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+    let out = '';
+    for (let i = 0; i < 16; i++) out += ('0' + bytes[i].toString(16)).slice(-2);
+    return out;
+  }
+
+  /* ---------- seat resume token ---------- */
+
+  function seatKey(){
+    return 'pg-seat-' + (opts.gameId || 'game') + '-' + (code || '');
+  }
+
+  function storedTokens(){
+    try {
+      const raw = store(seatKey());
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(function(t){ return typeof t === 'string'; });
+      return (parsed && parsed.token) ? [parsed.token] : [];
+    } catch (e) { return []; }
+  }
+
+  /* this tab's token first, then any token this browser used for this room —
+     enough to find our seat again after a reload or a reopened tab. */
+  function seatTokens(){
+    const out = [];
+    const mine = sessionStore(seatKey() + '-tab');
+    if (mine) out.push(mine);
+    storedTokens().forEach(function(t){ if (out.indexOf(t) === -1) out.push(t); });
+    return out.slice(0, 8);
+  }
+
+  function ensureSeatToken(){
+    let token = sessionStore(seatKey() + '-tab');
+    if (!token){
+      token = randToken();
+      sessionStore(seatKey() + '-tab', token);
+    }
+    try {
+      const list = storedTokens().filter(function(t){ return t !== token; });
+      list.unshift(token);
+      store(seatKey(), JSON.stringify(list.slice(0, 8)));
+    } catch (e) {}
+    return token;
+  }
+
+  function forgetSeatToken(){
+    const mine = sessionStore(seatKey() + '-tab');
+    try {
+      if (mine) store(seatKey(), JSON.stringify(storedTokens().filter(function(t){ return t !== mine; })));
+    } catch (e) {}
+    try { sessionStorage.removeItem(seatKey() + '-tab'); } catch (e) {}
   }
 
   function norm(s){
@@ -165,7 +235,7 @@
       '<label class="pg-field"><span>join with a code</span><input id="pgCode" class="pg-code-input" maxlength="200" placeholder="ABC-1234" autocomplete="off" spellcheck="false" value="' + esc(code || hashCode) + '"></label>' +
       '<div class="pg-room-actions"><button class="pg-btn" data-act="join">join a room</button></div>' +
       (error ? '<p class="pg-error">' + esc(error) + '</p>' : '') +
-      '<p class="pg-room-hint">codes are 7 characters. rooms are peer-to-peer; keep this tab open while you play.</p>';
+      '<p class="pg-room-hint">codes are 7 characters. rooms are peer-to-peer; come back with the same browser and you keep your seat.</p>';
   }
 
   function playerRows(){
@@ -175,7 +245,9 @@
     for (let i = 0; i < opts.maxPlayers; i++){
       const p = players.find(function(x){ return x.seat === i; });
       const isMe = p && p.id === myId;
-      const tag = isMe ? 'you' : (p && p.seat === 0 ? 'host' : (p && p.online === false ? 'offline' : ''));
+      const isHost = p && p.id === hostId;
+      const tag = isMe ? (isHost ? 'you · host' : 'you')
+        : (isHost ? 'host' : (p && p.online === false ? 'away' : ''));
       html += '<div class="pg-player' + (p ? '' : ' empty') + '">' +
         '<span class="pg-dot" style="background:' + (p ? (colors[i] || '#fdf8ea') : 'transparent') + '"></span>' +
         '<span class="pg-seat">' + esc(names[i] || ('seat ' + (i + 1))) + '</span>' +
@@ -197,7 +269,8 @@
       : 'peer-to-peer room';
 
     let status;
-    if (started) status = 'game in progress';
+    if (electing) status = 'finding a new host…';
+    else if (started) status = 'game in progress';
     else if (!ready) status = 'waiting for ' + Math.max(1, minPlayers - onlineCount) + ' more';
     else if (opts.canStart && isHost) status = 'ready — start when you are';
     else if (opts.canStart) status = 'ready — waiting for the host';
@@ -214,7 +287,9 @@
         '<button class="pg-btn" data-act="leave">leave room</button>' +
       '</div>' +
       (error ? '<p class="pg-error">' + esc(error) + '</p>' : '') +
-      '<p class="pg-room-hint">keep this tab open while you play. the host holds the game in this first version.</p>';
+      '<p class="pg-room-hint">' + (isHost
+        ? 'the room keeps running if you close this tab — the next player takes over.'
+        : 'if the host drops, the room carries on with the next player.') + '</p>';
   }
 
   function wireInputs(){
@@ -348,6 +423,55 @@
     return new LocalTransport(roomCode);
   }
 
+  /* ---------- timers ---------- */
+
+  function startPing(){
+    clearInterval(pingTimer);
+    pingTimer = setInterval(function(){
+      if (role !== 'guest' || !transport){ clearInterval(pingTimer); return; }
+      try { transport.send({type: 'ping'}); } catch (e) {}
+    }, 2000);
+  }
+
+  function stopHostTimers(){
+    clearInterval(heartbeatTimer);
+    clearInterval(hostPingTimer);
+    heartbeatTimer = null;
+    hostPingTimer = null;
+  }
+
+  function startHostTimers(){
+    stopHostTimers();
+    heartbeatTimer = setInterval(function(){
+      if (role !== 'host') return;
+      let changed = false;
+      const now = Date.now();
+      players.forEach(function(p){
+        if (p.id !== myId && p.online !== false && p.lastSeen && now - p.lastSeen > PEER_SILENCE){
+          p.online = false;
+          changed = true;
+        }
+      });
+      if (changed){
+        if (opts.onPlayers) opts.onPlayers(players);
+        broadcast();
+        render();
+      }
+    }, 3000);
+    hostPingTimer = setInterval(function(){
+      if (role !== 'host' || !transport) return;
+      try { transport.send({type: 'host-ping', host: myId, epoch: epoch}); } catch (e) {}
+    }, 2000);
+  }
+
+  function startHostWatch(){
+    clearInterval(hostWatchTimer);
+    hostWatchTimer = setInterval(function(){
+      if (role !== 'guest'){ clearInterval(hostWatchTimer); return; }
+      if (lastHostSeen && Date.now() - lastHostSeen > HOST_SILENCE) hostLost();
+    }, 2000);
+  }
+
   /* ---------- room logic ---------- */
 
   function broadcast(){
@@ -357,7 +481,8 @@
       state: opts.getSnapshot ? opts.getSnapshot() : null,
       players: players,
       started: started,
-      host: myId
+      host: myId,
+      epoch: epoch
     });
   }
 
@@ -366,10 +491,15 @@
   }
 
   function applyState(msg, peer){
+    if (typeof msg.epoch === 'number') epoch = Math.max(epoch, msg.epoch);
     players = Array.isArray(msg.players) ? msg.players : [];
     started = !!msg.started;
     if (msg.host) hostId = msg.host;
     if (peer) hostPeer = peer;
+    lastHostSeen = Date.now();
+    skipped = {};
+    electing = false;
+    clearTimeout(electTimer);
     const me = players.find(function(p){ return p.id === myId; });
     if (me) mySeat = me.seat;
     clearInterval(joinTimer);
@@ -383,10 +513,133 @@
     if (started && modal && modal.classList.contains('show')) close();
   }
 
+  function seatOf(id){
+    const p = players.find(function(x){ return x.id === id; });
+    return p ? p.seat : null;
+  }
+
+  /* ---------- host handover ---------- */
+
+  function roomEnded(message){
+    clearInterval(joinTimer);
+    clearInterval(heartbeatTimer);
+    clearInterval(hostPingTimer);
+    clearInterval(hostWatchTimer);
+    clearInterval(pingTimer);
+    clearTimeout(electTimer);
+    if (transport){ try { transport.close(); } catch (e) {} }
+    transport = null;
+    role = null;
+    players = [];
+    mySeat = null;
+    started = false;
+    busy = false;
+    electing = false;
+    hostId = null;
+    hostPeer = null;
+    epoch = 0;
+    error = message;
+    if (opts.onLeave) opts.onLeave();
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    render();
+    open();
+    updateBtn();
+  }
+
+  function becomeHost(nextEpoch){
+    if (!transport || !players.length) { roomEnded('the room ended.'); return; }
+    clearInterval(hostWatchTimer);
+    clearInterval(pingTimer);
+    clearTimeout(electTimer);
+    role = 'host';
+    epoch = nextEpoch || (epoch + 1);
+    hostId = myId;
+    hostPeer = 'self';
+    lastHostSeen = Date.now();
+    electing = false;
+    busy = false;
+    error = '';
+    skipped = {};
+    const now = Date.now();
+    players.forEach(function(p){ p.lastSeen = now; });
+    const me = players.find(function(p){ return p.id === myId; });
+    if (me) mySeat = me.seat;
+    startHostTimers();
+    if (opts.onSeat) opts.onSeat(mySeat, players);
+    if (opts.onPlayers) opts.onPlayers(players);
+    render();
+    updateBtn();
+    broadcast();
+  }
+
+  function adoptHost(msg, peer){
+    stopHostTimers();
+    role = 'guest';
+    epoch = typeof msg.epoch === 'number' ? msg.epoch : epoch;
+    hostId = msg.host;
+    hostPeer = peer;
+    lastHostSeen = Date.now();
+    electing = false;
+    skipped = {};
+    clearTimeout(electTimer);
+    startHostWatch();
+    startPing();
+    updateBtn();
+  }
+
+  function hostLost(){
+    if (!role || role === 'host' || !players.length || electing) return;
+    const old = players.find(function(p){ return p.id === hostId; });
+    if (old && old.online !== false && old.id !== myId){
+      old.online = false;
+      if (opts.onPlayers) opts.onPlayers(players);
+    }
+    const online = players.filter(function(p){ return p.online !== false; })
+      .sort(function(a, b){ return a.seat - b.seat; });
+    const me = players.find(function(p){ return p.id === myId; });
+    const pick = online.find(function(p){ return !skipped[p.id]; });
+    if (!pick || !online.length){ roomEnded('the room ended.'); return; }
+
+    if (pick.id === myId && me){
+      becomeHost(epoch + 1);
+      return;
+    }
+
+    electing = true;
+    render();
+    clearTimeout(electTimer);
+    const seenAt = lastHostSeen;
+    electTimer = setTimeout(function(){
+      if (role !== 'guest' || lastHostSeen !== seenAt) return;
+      // the elected seat stayed silent too — skip it and try the next one.
+      skipped[pick.id] = true;
+      electing = false;
+      hostLost();
+    }, 4500);
+  }
+
+  /* ---------- messages ---------- */
+
   function onMsg(msg, peer){
     if (!msg || !msg.type) return;
 
+    // A newer host supersedes us. Equal-epoch claims are settled by seat order.
+    if (msg.type === 'state' && msg.host && msg.host !== myId){
+      const newer = typeof msg.epoch === 'number' && msg.epoch > epoch;
+      // two peers can promote at the same instant; the lower seat wins.
+      const tieBreak = typeof msg.epoch === 'number' && msg.epoch === epoch && msg.host !== hostId &&
+        seatOf(msg.host) != null && seatOf(hostId) != null && seatOf(msg.host) < seatOf(hostId);
+      if (newer || tieBreak){
+        adoptHost(msg, peer);
+        applyState(msg, peer);
+        return;
+      }
+      if (msg.host !== hostId) return; // an older or foreign host; ignore
+    }
+
     if (role === 'host'){
+      if (msg.type === 'state' || msg.type === 'host-ping') return;
+
       if (msg.type === 'ping'){
         const p = players.find(function(x){ return x.id === msg.id; });
         if (p){
@@ -403,11 +656,23 @@
       if (msg.type === 'join'){
         const id = msg.id || peer;
         if (!id) return;
-        const existing = players.find(function(p){ return p.id === id; });
+        const token = String(msg.token || '');
+        const candidates = Array.isArray(msg.tokens) ? msg.tokens.slice(0, 8) : (token ? [token] : []);
+        let existing = players.find(function(p){ return p.id === id; });
+        // a browser that comes back with its seat token gets its seat again,
+        // unless somebody else is actively sitting in it.
+        if (!existing){
+          for (let i = 0; i < candidates.length && !existing; i++){
+            const claimed = players.find(function(p){ return p.token === candidates[i]; });
+            if (claimed && (claimed.online === false || claimed.id === id)) existing = claimed;
+          }
+        }
         if (existing){
           existing.online = true;
           existing.peer = peer;
+          existing.id = id;
           existing.lastSeen = Date.now();
+          if (token) existing.token = token;
           if (opts.onPlayers) opts.onPlayers(players);
           broadcast();
           render();
@@ -435,6 +700,7 @@
           name: String(msg.name || 'player').slice(0, 18),
           seat: seat,
           peer: peer,
+          token: token,
           online: true,
           lastSeen: Date.now()
         });
@@ -443,7 +709,7 @@
         render();
       } else if (msg.type === 'action'){
         const p = players.find(function(x){ return x.id === (msg.id || peer); });
-        if (!p) return;
+        if (!p || p.online === false) return;
         const ok = opts.onAction ? opts.onAction(msg.action, p.seat) : false;
         if (ok) broadcast();
       } else if (msg.type === 'leave'){
@@ -465,7 +731,9 @@
       }
     } else if (role === 'guest'){
       if (msg.type === 'state'){
-        applyState(msg, peer);
+        if (!hostId || msg.host === hostId) applyState(msg, peer);
+      } else if (msg.type === 'host-ping'){
+        if (!hostId || msg.host === hostId || msg.id === hostId) lastHostSeen = Date.now();
       } else if (msg.type === 'full'){
         clearInterval(joinTimer);
         clearInterval(pingTimer);
@@ -480,33 +748,12 @@
         render();
         open();
         updateBtn();
-      } else if (msg.type === 'leave' && (msg.host || msg.id === hostId)){
-        hostLeft();
+      } else if (msg.type === 'leave' && msg.id === hostId){
+        hostLost();
       } else if (msg.type === 'peer-leave'){
-        if (peer === hostPeer || peer === hostId) hostLeft();
+        if (peer === hostPeer || peer === hostId) hostLost();
       }
     }
-  }
-
-  function hostLeft(){
-    clearInterval(joinTimer);
-    clearInterval(heartbeatTimer);
-    clearInterval(pingTimer);
-    if (transport){ try { transport.close(); } catch (e) {} }
-    transport = null;
-    role = null;
-    players = [];
-    mySeat = null;
-    started = false;
-    busy = false;
-    hostId = null;
-    hostPeer = null;
-    error = 'the host left the room.';
-    if (opts.onLeave) opts.onLeave();
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-    render();
-    open();
-    updateBtn();
   }
 
   async function createRoom(){
@@ -523,26 +770,16 @@
       myId = t.selfId || myId;
       mySeat = 0;
       started = false;
-      players = [{id: myId, name: getName(), seat: 0, peer: 'self', online: true, lastSeen: Date.now()}];
+      epoch = 1;
+      hostId = myId;
+      hostPeer = 'self';
+      lastHostSeen = Date.now();
+      const token = ensureSeatToken();
+      players = [{id: myId, name: getName(), seat: 0, peer: 'self', token: token, online: true, lastSeen: Date.now()}];
       transport = t;
       busy = false;
-      clearInterval(heartbeatTimer);
-      heartbeatTimer = setInterval(function(){
-        if (role !== 'host') return;
-        let changed = false;
-        const now = Date.now();
-        players.forEach(function(p){
-          if (p.seat !== 0 && p.online !== false && p.lastSeen && now - p.lastSeen > 7000){
-            p.online = false;
-            changed = true;
-          }
-        });
-        if (changed){
-          if (opts.onPlayers) opts.onPlayers(players);
-          broadcast();
-          render();
-        }
-      }, 3000);
+      try { history.replaceState(null, '', location.pathname + location.search + '#' + c); } catch (e) {}
+      startHostTimers();
       if (opts.onSeat) opts.onSeat(0, players);
       if (opts.onPlayers) opts.onPlayers(players);
       render();
@@ -577,6 +814,9 @@
     mySeat = null;
     players = [];
     started = false;
+    epoch = 0;
+    hostId = null;
+    electing = false;
     try { history.replaceState(null, '', location.pathname + location.search + '#' + cc); } catch (e) {}
     render();
     try {
@@ -585,15 +825,12 @@
       myId = t.selfId || myId;
       role = 'guest';
       busy = false;
+      lastHostSeen = 0; // the clock starts when the first state arrives
+      startHostWatch();
       render();
       updateBtn();
-      t.send({type: 'join', name: getName()});
-      // keep this seat alive on peer-to-peer rooms, where there is no built-in ping.
-      clearInterval(pingTimer);
-      pingTimer = setInterval(function(){
-        if (role !== 'guest' || !transport) { clearInterval(pingTimer); return; }
-        try { transport.send({type: 'ping'}); } catch (e) {}
-      }, 2000);
+      t.send({type: 'join', name: getName(), token: ensureSeatToken(), tokens: seatTokens()});
+      startPing();
       joinTries = 0;
       clearInterval(joinTimer);
       joinTimer = setInterval(function(){
@@ -613,7 +850,7 @@
           updateBtn();
           return;
         }
-        if (transport) transport.send({type: 'join', name: getName()});
+        if (transport) transport.send({type: 'join', name: getName(), token: ensureSeatToken(), tokens: seatTokens()});
       }, 1400);
     } catch (e) {
       busy = false;
@@ -638,19 +875,27 @@
   function leaveRoom(){
     clearInterval(joinTimer);
     clearInterval(heartbeatTimer);
+    clearInterval(hostPingTimer);
+    clearInterval(hostWatchTimer);
     clearInterval(pingTimer);
+    clearTimeout(electTimer);
     if (transport){
       try { transport.send({type: 'leave', id: myId, host: role === 'host'}); } catch (e) {}
       try { transport.close(); } catch (e) {}
     }
     transport = null;
     role = null;
-    code = null;
     mySeat = null;
     players = [];
     started = false;
     error = '';
     busy = false;
+    electing = false;
+    hostId = null;
+    hostPeer = null;
+    epoch = 0;
+    forgetSeatToken();
+    code = null;
     if (opts.onLeave) opts.onLeave();
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     render();
@@ -701,6 +946,8 @@
     inviteUrl: inviteUrl,
     get code(){ return code; },
     get seat(){ return mySeat; },
-    get role(){ return role; }
+    get role(){ return role; },
+    get epoch(){ return epoch; },
+    get hostId(){ return hostId; }
   };
 })();

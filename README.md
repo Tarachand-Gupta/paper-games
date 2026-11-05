@@ -21,7 +21,8 @@ The pages are plain HTML/CSS/JS, so they also work on Cloudflare Pages or GitHub
 - Open a game, press **invite**, then **create a room**.
 - Share the seven-character code, the copied link, or the code through the hub's **join a room** form.
 - The other player opens the game (the invite link joins automatically) and gets the next free seat.
-- Rooms are **host-authoritative** in this version: the host holds the game and relays snapshots. If the host leaves, the room ends.
+- Rooms are **host-authoritative**: the host holds the game and relays snapshots. Every player keeps the latest snapshot too, so if the host leaves, the lowest online seat **takes over** and the game carries on. A host who reloads rejoins as a guest and gets their seat back.
+- **Seats are remembered per browser.** Each browser keeps a secret resume token per room, so a reload, a closed tab, or a laptop waking up puts you back in your own seat instead of a new one. A different browser gets a new seat.
 - Cross-device rooms use Trystero over public relays (peer-to-peer). Same-browser rooms work too; add `?local=1` to force the local path (BroadcastChannel across tabs).
 - Ludo starts with **2 to 4 players**. Empty or disconnected seats are skipped automatically, so a two-player game is a two-horse race around the board.
 - A player who closes the tab is marked **away** within a few seconds; the remaining players keep playing.
@@ -35,8 +36,8 @@ The pages are plain HTML/CSS/JS, so they also work on Cloudflare Pages or GitHub
 ## Known limits
 
 - No accounts, rankings, or global room list.
-- The host must keep the tab open. A host refresh ends the room.
-- A player who drops mid-game cannot rejoin that same seat yet — reloading takes a free seat instead.
+- A room only lives while someone is in it: if everybody closes the tab, the game is gone. (Persisting rooms needs a server; that is the next step if this grows.)
+- A seat belongs to the browser that claimed it. Rejoining from another device cannot take over a seat mid-game — it gets the next free one.
 - Offline seats are skipped; if every rival leaves, the last player plays out the board alone.
 - No hidden-information games yet.
 - Public signalling relays are best-effort; strict NATs can still block a peer-to-peer room. The room panel says so when it falls back to same-browser play.
