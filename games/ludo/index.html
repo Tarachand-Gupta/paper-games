@@ -1345,6 +1345,12 @@
   resize();
   startLocal();
   initRoom();
+
+  // the hub's "how do you wish to play?" sheet arrives as ?mode=
+  const bootMode = new URLSearchParams(location.search).get('mode');
+  if (bootMode === 'online' && !location.hash.replace(/^#/, '')){
+    setTimeout(function(){ if (window.PaperRoom) PaperRoom.open(); }, 220);
+  }
   requestAnimationFrame(loop);
 
   window.ludo = {

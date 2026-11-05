@@ -4,6 +4,10 @@ A static notebook full of games. Chess and Ludo have invite-code rooms; Snake is
 
 **Play:** <https://tarachand-gupta.github.io/paper-games/>
 
+## The notebook
+
+Pick a card, then pick a way to play: **pass and play**, **with friends online**, or — for chess — **against the pencil**. The choice lands on the game with that mode already set (`?mode=local`, `?mode=online`, `?mode=ai`).
+
 ## Run it locally
 
 From this folder:

@@ -1766,7 +1766,18 @@
   updateStatus();
   renderLog();
   render(performance.now());
+
+  // the hub's "how do you wish to play?" sheet arrives as ?mode=
+  const bootMode = new URLSearchParams(location.search).get('mode');
+  if (bootMode === 'local' || bootMode === 'online'){
+    modeAI = false;
+    cancelAI();
+    updateStatus();
+  }
   initRoom();
+  if (bootMode === 'online' && !location.hash.replace(/^#/, '')){
+    setTimeout(function(){ if (window.PaperRoom) PaperRoom.open(); }, 220);
+  }
 
   // expose the pure engine for testing in a console if wanted
   window.chessEngine = {
