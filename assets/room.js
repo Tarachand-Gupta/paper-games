@@ -32,8 +32,13 @@
   let joinTries = 0;
   let hostId = null;
   let hostPeer = null;
+  let roomSize = 0;         // seats in the current room
+  let selectedSize = 0;     // seats picked on the create form
+  let pendingResume = null; // a room this browser was in, offered on load
+  let notice = null;        // a terminal message (removed, room ended) awaiting dismissal
   let epoch = 0;            // incremented on every host handover
   let lastHostSeen = 0;
+  let uiTimer = null;
   let electing = false;
   let skipped = {};         // seats that stayed silent when we looked for a new host
   let cachedName = null;
@@ -129,6 +134,32 @@
     return token;
   }
 
+  function activeKey(){
+    return 'pg-active-' + (opts.gameId || 'game');
+  }
+
+  function rememberRoom(){
+    if (!code) return;
+    try {
+      store(activeKey(), JSON.stringify({ code: code, at: Date.now(), started: started, size: seats() }));
+    } catch (e) {}
+  }
+
+  function forgetRoom(){
+    try { localStorage.removeItem(activeKey()); } catch (e) {}
+  }
+
+  function activeRoom(){
+    try {
+      const raw = store(activeKey());
+      if (!raw) return null;
+      const rec = JSON.parse(raw);
+      if (!rec || !valid(norm(rec.code || ''))) { forgetRoom(); return null; }
+      if (Date.now() - (rec.at || 0) > 12 * 60 * 60 * 1000){ forgetRoom(); return null; }
+      return rec;
+    } catch (e) { return null; }
+  }
+
   function forgetSeatToken(){
     const mine = sessionStore(seatKey() + '-tab');
     try {
@@ -168,6 +199,26 @@
     store('pg-name', cachedName);
   }
 
+  function seats(){
+    return Math.min(4, Math.max(2, roomSize || opts.maxPlayers || 4));
+  }
+
+  function onlineCount(){
+    return players.filter(function(p){ return p.online !== false; }).length;
+  }
+
+  function markAway(p){
+    if (!p || p.online === false) return;
+    p.online = false;
+    if (!p.awaySince) p.awaySince = Date.now();
+  }
+
+  function markBack(p){
+    if (!p || p.online === true) return;
+    p.online = true;
+    delete p.awaySince;
+  }
+
   /* ---------- modal ---------- */
 
   function build(){
@@ -191,6 +242,22 @@
       else if (act === 'copy') copyLink(el);
       else if (act === 'leave') leaveRoom();
       else if (act === 'start') startRoom();
+      else if (act === 'size'){ selectedSize = Math.min(4, Math.max(2, +el.dataset.size || 4)); render(); }
+      else if (act === 'remove') removePlayer(+el.dataset.seat);
+      else if (act === 'rejoin'){
+        const c = pendingResume && pendingResume.code;
+        pendingResume = null;
+        if (c) joinRoom(c);
+      } else if (act === 'ignore'){
+        pendingResume = null;
+        forgetRoom();
+        render();
+        close();
+      } else if (act === 'dismiss'){
+        notice = null;
+        render();
+        close();
+      }
     });
 
     modal.addEventListener('keydown', function(e){
@@ -216,7 +283,7 @@
 
   function updateBtn(){
     if (!roomBtn) return;
-    roomBtn.textContent = role ? 'room' : 'invite';
+    roomBtn.textContent = opts.roomBtnLabel || (role ? 'room' : 'invite');
     roomBtn.classList.toggle('active', !!role);
   }
 
@@ -230,6 +297,16 @@
       '<div class="pg-room-head"><h2>play with a friend</h2><button class="pg-x" data-act="close" aria-label="Close">×</button></div>' +
       '<p class="pg-room-sub">one code, one page. open the same game on the other device, then join.</p>' +
       '<label class="pg-field"><span>your name</span><input id="pgName" maxlength="18" autocomplete="off"></label>' +
+      (opts.choices && opts.choices.length > 1
+        ? '<label class="pg-field"><span>players</span>' +
+            '<span class="pg-seg" role="group" aria-label="Number of players">' +
+              opts.choices.map(function(n){
+                return '<button type="button" class="pg-seg-btn' + (n === selectedSize ? ' active' : '') + '" data-act="size" data-size="' + n + '" aria-pressed="' + (n === selectedSize) + '">' + n + '</button>';
+              }).join('') +
+            '</span>' +
+            '<span class="pg-seg-hint">' + (selectedSize < opts.maxPlayers ? 'a room for ' + selectedSize + '.' : 'up to ' + opts.maxPlayers + '; you can start with fewer if someone is late.') + '</span>' +
+          '</label>'
+        : '') +
       '<div class="pg-room-actions"><button class="pg-btn primary" data-act="create">create a room</button></div>' +
       '<div class="pg-or">or</div>' +
       '<label class="pg-field"><span>join with a code</span><input id="pgCode" class="pg-code-input" maxlength="200" placeholder="ABC-1234" autocomplete="off" spellcheck="false" value="' + esc(code || hashCode) + '"></label>' +
@@ -242,27 +319,33 @@
     const names = opts.seatNames || ['player 1', 'player 2', 'player 3', 'player 4'];
     const colors = opts.seatColors || SEAT_COLORS;
     let html = '';
-    for (let i = 0; i < opts.maxPlayers; i++){
+    for (let i = 0; i < seats(); i++){
       const p = players.find(function(x){ return x.seat === i; });
       const isMe = p && p.id === myId;
       const isHost = p && p.id === hostId;
-      const tag = isMe ? (isHost ? 'you · host' : 'you')
-        : (isHost ? 'host' : (p && p.online === false ? 'away' : ''));
-      html += '<div class="pg-player' + (p ? '' : ' empty') + '">' +
+      const gone = p && p.online === false;
+      const canRemove = role === 'host' && p && gone && !p.removed && p.awaySince &&
+        Date.now() - p.awaySince > 30000;
+      const tag = p && p.removed ? 'removed'
+        : isMe ? (isHost ? 'you · host' : 'you')
+        : (isHost ? 'host' : (gone ? 'away' : ''));
+      html += '<div class="pg-player' + (p ? '' : ' empty') + (p && p.removed ? ' removed' : '') + '">' +
         '<span class="pg-dot" style="background:' + (p ? (colors[i] || '#fdf8ea') : 'transparent') + '"></span>' +
         '<span class="pg-seat">' + esc(names[i] || ('seat ' + (i + 1))) + '</span>' +
         '<span class="pg-name">' + (p ? esc(p.name) : 'waiting') + '</span>' +
-        '<span class="pg-tag">' + tag + '</span>' +
+        (canRemove
+          ? '<button class="pg-remove" type="button" data-act="remove" data-seat="' + i + '">remove</button>'
+          : '<span class="pg-tag">' + tag + '</span>') +
       '</div>';
     }
     return html;
   }
 
   function roomHTML(){
-    const onlineCount = players.filter(function(p){ return p.online !== false; }).length;
-    const minPlayers = opts.minPlayers || opts.maxPlayers;
-    const ready = onlineCount >= minPlayers;
+    const here = onlineCount();
+    const size = seats();
     const isHost = role === 'host';
+    const ready = here >= 2;
     const canStart = isHost && opts.canStart && ready && !started;
     const note = transport && transport.kind === 'local'
       ? (localForced ? 'local room — same browser only' : 'offline room — same browser only, invite links will not work')
@@ -271,19 +354,19 @@
     let status;
     if (electing) status = 'finding a new host…';
     else if (started) status = 'game in progress';
-    else if (!ready) status = 'waiting for ' + Math.max(1, minPlayers - onlineCount) + ' more';
-    else if (opts.canStart && isHost) status = 'ready — start when you are';
-    else if (opts.canStart) status = 'ready — waiting for the host';
-    else status = 'both players are here';
+    else if (!ready) status = 'waiting for a rival';
+    else if (here < size) status = here + ' of ' + size + ' here — ' + (isHost ? 'start now, or wait for the rest' : 'the host can start now');
+    else status = isHost ? 'everyone is here — start when ready' : 'everyone is here — waiting for the host';
+    const startLabel = here < size ? 'start with ' + here + ' players' : 'start game';
 
     return '' +
       '<div class="pg-room-head"><h2>your room</h2><button class="pg-x" data-act="close" aria-label="Close">×</button></div>' +
       '<div class="pg-code-box"><span class="pg-code">' + esc(displayCode(code || '-------')) + '</span><button class="pg-copy" data-act="copy">copy link</button></div>' +
-      '<p class="pg-room-sub">share this code. they open <b>' + esc(opts.gameName || 'the game') + '</b> and join.</p>' +
+      '<p class="pg-room-sub">share this code. they open <b>' + esc(opts.gameName || 'the game') + '</b> and join. a room for ' + size + '.</p>' +
       '<div class="pg-players">' + playerRows() + '</div>' +
       '<p class="pg-status"><b>' + esc(status) + '</b><br>' + esc(note) + '</p>' +
       '<div class="pg-room-actions">' +
-        (canStart ? '<button class="pg-btn primary" data-act="start">start game</button>' : '') +
+        (canStart ? '<button class="pg-btn primary" data-act="start">' + startLabel + '</button>' : '') +
         '<button class="pg-btn" data-act="leave">leave room</button>' +
       '</div>' +
       (error ? '<p class="pg-error">' + esc(error) + '</p>' : '') +
@@ -307,7 +390,30 @@
   function render(){
     if (!bodyEl) return;
     if (busy){ bodyEl.innerHTML = busyHTML('opening the page…'); return; }
-    if (!role){ bodyEl.innerHTML = idleHTML(); wireInputs(); return; }
+    if (!role){
+      if (notice){
+        bodyEl.innerHTML =
+          '<div class="pg-room-head"><h2>' + esc(notice.title) + '</h2><button class="pg-x" data-act="dismiss" aria-label="Close">×</button></div>' +
+          '<p class="pg-room-sub">' + esc(notice.body) + '</p>' +
+          '<div class="pg-room-actions"><button class="pg-btn primary" data-act="dismiss">ok</button></div>';
+        return;
+      }
+      if (pendingResume){
+        bodyEl.innerHTML =
+          '<div class="pg-room-head"><h2>game in progress</h2><button class="pg-x" data-act="close" aria-label="Close">×</button></div>' +
+          '<p class="pg-room-sub">you were in a room for <b>' + esc(opts.gameName || 'this game') + '</b>. rejoin and pick up where you left off?</p>' +
+          '<div class="pg-code-box"><span class="pg-code">' + esc(displayCode(pendingResume.code)) + '</span><span class="pg-tag">' + (pendingResume.started ? 'started' : 'waiting') + '</span></div>' +
+          '<div class="pg-room-actions">' +
+            '<button class="pg-btn primary" data-act="rejoin">rejoin the game</button>' +
+            '<button class="pg-btn" data-act="ignore">ignore</button>' +
+          '</div>' +
+          '<p class="pg-room-hint">rejoining takes your old seat back if it is still free. ignoring leaves the game behind.</p>';
+        return;
+      }
+      bodyEl.innerHTML = idleHTML();
+      wireInputs();
+      return;
+    }
     bodyEl.innerHTML = roomHTML();
   }
 
@@ -448,7 +554,7 @@
       const now = Date.now();
       players.forEach(function(p){
         if (p.id !== myId && p.online !== false && p.lastSeen && now - p.lastSeen > PEER_SILENCE){
-          p.online = false;
+          markAway(p);
           changed = true;
         }
       });
@@ -482,7 +588,8 @@
       players: players,
       started: started,
       host: myId,
-      epoch: epoch
+      epoch: epoch,
+      size: seats()
     });
   }
 
@@ -492,6 +599,7 @@
 
   function applyState(msg, peer){
     if (typeof msg.epoch === 'number') epoch = Math.max(epoch, msg.epoch);
+    if (msg.size) roomSize = msg.size;
     players = Array.isArray(msg.players) ? msg.players : [];
     started = !!msg.started;
     if (msg.host) hostId = msg.host;
@@ -509,6 +617,7 @@
     if (opts.onPlayers) opts.onPlayers(players);
     render();
     updateBtn();
+    rememberRoom();
     // the game is live now — get the room panel out of the way.
     if (started && modal && modal.classList.contains('show')) close();
   }
@@ -538,7 +647,9 @@
     hostId = null;
     hostPeer = null;
     epoch = 0;
-    error = message;
+    error = '';
+    forgetRoom();
+    notice = { title: 'the room ended', body: message || 'there is nobody left in the room.' };
     if (opts.onLeave) opts.onLeave();
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     render();
@@ -591,7 +702,7 @@
     if (!role || role === 'host' || !players.length || electing) return;
     const old = players.find(function(p){ return p.id === hostId; });
     if (old && old.online !== false && old.id !== myId){
-      old.online = false;
+      markAway(old);
       if (opts.onPlayers) opts.onPlayers(players);
     }
     const online = players.filter(function(p){ return p.online !== false; })
@@ -663,8 +774,17 @@
         // unless somebody else is actively sitting in it.
         if (!existing){
           for (let i = 0; i < candidates.length && !existing; i++){
-            const claimed = players.find(function(p){ return p.token === candidates[i]; });
+            const claimed = players.find(function(p){ return p.token === candidates[i] && !p.removed; });
             if (claimed && (claimed.online === false || claimed.id === id)) existing = claimed;
+          }
+        }
+        if (!existing && candidates.length){
+          const removedSeat = players.find(function(p){
+            return p.removed && p.token && candidates.indexOf(p.token) !== -1;
+          });
+          if (removedSeat){
+            if (transport) transport.send({type: 'removed'}, peer);
+            return;
           }
         }
         if (existing){
@@ -672,13 +792,19 @@
           existing.peer = peer;
           existing.id = id;
           existing.lastSeen = Date.now();
+          delete existing.awaySince;
           if (token) existing.token = token;
           if (opts.onPlayers) opts.onPlayers(players);
           broadcast();
           render();
           return;
         }
-        if (players.length >= opts.maxPlayers){
+        // once the game is underway the room is closed to new players
+        if (started){
+          if (transport) transport.send({type: 'closed'}, peer);
+          return;
+        }
+        if (players.length >= seats()){
           let off = -1;
           const canReplace = !started && (opts.canStart || (opts.canReplace && opts.canReplace()));
           if (canReplace){
@@ -715,7 +841,7 @@
       } else if (msg.type === 'leave'){
         const p = players.find(function(x){ return x.id === (msg.id || peer); });
         if (p){
-          p.online = false;
+          markAway(p);
           if (opts.onPlayers) opts.onPlayers(players);
           broadcast();
           render();
@@ -723,7 +849,7 @@
       } else if (msg.type === 'peer-leave'){
         const p = players.find(function(x){ return x.peer === peer; });
         if (p){
-          p.online = false;
+          markAway(p);
           if (opts.onPlayers) opts.onPlayers(players);
           broadcast();
           render();
@@ -734,6 +860,25 @@
         if (!hostId || msg.host === hostId) applyState(msg, peer);
       } else if (msg.type === 'host-ping'){
         if (!hostId || msg.host === hostId || msg.id === hostId) lastHostSeen = Date.now();
+      } else if (msg.type === 'closed' || msg.type === 'removed'){
+        clearInterval(joinTimer);
+        clearInterval(pingTimer);
+        if (transport) transport.close();
+        transport = null;
+        role = null;
+        players = [];
+        mySeat = null;
+        started = false;
+        roomSize = 0;
+        forgetRoom();
+        notice = msg.type === 'removed'
+          ? { title: 'you were removed', body: 'the host removed you from that game.' }
+          : { title: 'invite closed', body: 'that game already started without you.' };
+        error = '';
+        if (opts.onLeave) opts.onLeave();
+        render();
+        open();
+        updateBtn();
       } else if (msg.type === 'full'){
         clearInterval(joinTimer);
         clearInterval(pingTimer);
@@ -743,6 +888,7 @@
         players = [];
         mySeat = null;
         started = false;
+        forgetRoom();
         error = 'that room is already full.';
         if (opts.onLeave) opts.onLeave();
         render();
@@ -760,6 +906,7 @@
     if (busy || role) return;
     busy = true;
     error = '';
+    notice = null;
     render();
     clearInterval(pingTimer);
     try {
@@ -770,6 +917,7 @@
       myId = t.selfId || myId;
       mySeat = 0;
       started = false;
+      roomSize = selectedSize || opts.maxPlayers || 4;
       epoch = 1;
       hostId = myId;
       hostPeer = 'self';
@@ -784,6 +932,7 @@
       if (opts.onPlayers) opts.onPlayers(players);
       render();
       updateBtn();
+      rememberRoom();
     } catch (e) {
       busy = false;
       role = null;
@@ -809,6 +958,7 @@
     if (busy) return;
     busy = true;
     error = '';
+    notice = null;
     code = cc;
     role = null;
     mySeat = null;
@@ -862,13 +1012,12 @@
 
   function startRoom(){
     if (role !== 'host' || started) return;
-    const minPlayers = opts.minPlayers || opts.maxPlayers;
-    const onlineCount = players.filter(function(p){ return p.online !== false; }).length;
-    if (onlineCount < minPlayers) return;
+    if (onlineCount() < 2) return;
     started = true;
     if (opts.onStart) opts.onStart(players);
     broadcast();
     render();
+    rememberRoom();
     close();
   }
 
@@ -895,11 +1044,22 @@
     hostPeer = null;
     epoch = 0;
     forgetSeatToken();
+    forgetRoom();
     code = null;
     if (opts.onLeave) opts.onLeave();
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     render();
     updateBtn();
+  }
+
+  function removePlayer(seat){
+    if (role !== 'host') return;
+    const p = players.find(function(x){ return x.seat === seat; });
+    if (!p || p.online !== false) return;
+    p.removed = true;
+    if (opts.onPlayers) opts.onPlayers(players);
+    broadcast();
+    render();
   }
 
   function sendAction(action){
@@ -914,6 +1074,10 @@
     if (modal) return;
     opts = o || {};
     opts.maxPlayers = opts.maxPlayers || 2;
+    selectedSize = opts.choices && opts.choices.indexOf(opts.maxPlayers) !== -1
+      ? opts.maxPlayers
+      : Math.min(4, Math.max(2, opts.maxPlayers));
+    roomSize = 0;
     myId = sessionStore('pg-player-id') || randomId();
     sessionStore('pg-player-id', myId);
     build();
@@ -925,7 +1089,20 @@
       code = hash;
       open();
       setTimeout(function(){ joinRoom(hash); }, 350);
+    } else {
+      const rec = activeRoom();
+      if (rec && (rec.started || Date.now() - (rec.at || 0) < 30 * 60 * 1000)){
+        pendingResume = rec;
+        open();
+      }
     }
+    // let the host's "remove" link appear once a missing player has been gone for 30s
+    clearInterval(uiTimer);
+    uiTimer = setInterval(function(){
+      if (!modal || !modal.classList.contains('show') || role !== 'host') return;
+      const waiting = players.some(function(p){ return p.online === false && !p.removed && p.awaySince; });
+      if (waiting) render();
+    }, 2000);
   }
 
   window.addEventListener('pagehide', function(){
@@ -943,10 +1120,14 @@
     sendAction: sendAction,
     publish: publish,
     leave: leaveRoom,
+    start: startRoom,
+    removePlayer: removePlayer,
     inviteUrl: inviteUrl,
     get code(){ return code; },
     get seat(){ return mySeat; },
     get role(){ return role; },
+    get size(){ return seats(); },
+    get started(){ return started; },
     get epoch(){ return epoch; },
     get hostId(){ return hostId; }
   };

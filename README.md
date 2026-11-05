@@ -18,11 +18,14 @@ The pages are plain HTML/CSS/JS, so they also work on Cloudflare Pages or GitHub
 
 ## Multiplayer
 
-- Open a game, press **invite**, then **create a room**.
-- Share the seven-character code, the copied link, or the code through the hub's **join a room** form.
+- Ludo opens in **Pass and Play**. Switch to **Play with friends** to open the room panel.
+- Pick a room size (**2, 3 or 4 pencils**), then **create a room**. Share the seven-character code, the copied link, or the code through the hub's **join a room** form.
 - The other player opens the game (the invite link joins automatically) and gets the next free seat.
+- The host can **start with fewer** than the chosen size — a room for 4 can start as a 3-player game. Once it starts, **the invite closes**: a late arrival sees "invite closed".
+- If a player leaves and does not come back within **30 seconds**, the host gets a **remove** link for that seat. A removed player who returns is told so.
 - Rooms are **host-authoritative**: the host holds the game and relays snapshots. Every player keeps the latest snapshot too, so if the host leaves, the lowest online seat **takes over** and the game carries on. A host who reloads rejoins as a guest and gets their seat back.
 - **Seats are remembered per browser.** Each browser keeps a secret resume token per room, so a reload, a closed tab, or a laptop waking up puts you back in your own seat instead of a new one. A different browser gets a new seat.
+- **Coming back is a choice.** Opening a game while a room from this browser is still alive shows a "game in progress — rejoin or ignore" prompt before anything else.
 - Cross-device rooms use Trystero over public relays (peer-to-peer). Same-browser rooms work too; add `?local=1` to force the local path (BroadcastChannel across tabs).
 - Ludo starts with **2 to 4 players**. Empty or disconnected seats are skipped automatically, so a two-player game is a two-horse race around the board.
 - A player who closes the tab is marked **away** within a few seconds; the remaining players keep playing.
@@ -30,7 +33,7 @@ The pages are plain HTML/CSS/JS, so they also work on Cloudflare Pages or GitHub
 ## Games
 
 - **Chess** — 2 players, full rules, perft-tested engine.
-- **Ludo** — 4 pencils, 52-cell track, four tokens each, safe squares, captures, home lanes, local pass-and-play and online rooms. The die sits in the middle of the board; the page takes the colour of your seat, and the turn banner names whose roll it is.
+- **Ludo** — 52-cell track, four tokens each, safe squares, captures, home lanes, pass-and-play and rooms for 2–4. The die sits in the middle of the board; the page takes the colour of your seat, the turn banner names whose roll it is, and idle corners are blanked in smaller games.
 - **Snake** — solo, notebook-paper arcade.
 
 ## Known limits

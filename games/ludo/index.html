@@ -74,7 +74,8 @@
   .turn-text .hint{font-size:13px; color:rgba(58,55,50,.6); margin-left:9px}
   .turn-text .hint::before{content:"·"; margin-right:7px; color:rgba(58,55,50,.4)}
   .turn-banner.mine{border-color:var(--turn); box-shadow:0 0 0 3px var(--turn-ring)}
-  .hud-right{display:flex; align-items:center; gap:7px; flex:none; margin-left:auto}
+  .hud-right{display:flex; align-items:center; gap:7px; flex:none; margin-left:auto; flex-wrap:wrap; justify-content:flex-end}
+  .mode-group{display:inline-flex; gap:6px}
   .you-pill{display:none; align-items:center; gap:6px; padding:3px 9px 4px; font-size:11.5px;
     border:1px dashed rgba(58,55,50,.35); border-radius:11px 4px 10px 5px}
   .you-pill.show{display:inline-flex}
@@ -134,6 +135,8 @@
     background:rgba(255,255,255,.16); transition:background .16s ease, border-color .16s ease}
   .rail-row.current{background:var(--turn-wash); border-color:var(--turn); box-shadow:inset 3px 0 0 var(--turn)}
   .rail-row.out{opacity:.55}
+  .rail-row.gone{opacity:.38}
+  .rail-row.gone .rail-name{text-decoration:line-through}
   .rail-dot{width:11px; height:11px; border-radius:50%; border:1.4px solid rgba(58,55,50,.72); box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.4)}
   .rail-name{font-size:13px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .rail-tag{display:block; font-family:var(--type); font-size:8.5px; letter-spacing:.14em; text-transform:uppercase; color:rgba(58,55,50,.5)}
@@ -148,6 +151,7 @@
     color:var(--ink); background:var(--turn-wash); border:1.6px solid rgba(58,55,50,.62);
     border-radius:15px 5px 13px 6px / 6px 13px 5px 15px; cursor:pointer}
   .roll-btn:hover{background:rgba(58,55,50,.12)}
+  .roll-btn.primary{background:rgba(58,55,50,.16); border-color:var(--accent); box-shadow:0 0 0 3px var(--turn-ring)}
   .roll-btn:disabled{opacity:.42; cursor:default}
   .roll-btn:focus-visible,.mode-btn:focus-visible,.icon-btn:focus-visible,.sketch-btn:focus-visible,.die-pad:focus-visible{outline:2px solid var(--red); outline-offset:3px}
   .footnote{position:relative; z-index:3; display:flex; justify-content:space-between; align-items:flex-end; gap:14px; flex-basis:100%;
@@ -184,6 +188,17 @@
     .controls{gap:10px}
     .roll-btn{height:42px; min-width:104px; font-size:15px}
   }
+  @media (max-width:480px){
+    .hud{flex-wrap:wrap; gap:7px; margin-bottom:9px}
+    .turn-banner{flex:1 1 100%; order:0}
+    .hud-right{flex:1 1 100%; order:1; margin-left:0; justify-content:flex-start; gap:6px}
+    .mode-group{flex:1; min-width:0}
+    .mode-btn{flex:1; min-width:0; padding:0 6px; font-size:11px; height:30px}
+    .subtitle{display:none}
+    .title{font-size:34px}
+    .footnote{display:none}
+    .board-wrap{width:min(100%,calc(100vh - 296px))}
+  }
   @media (max-width:430px){
     .paper{padding:12px 9px 10px 20px}
     .title{font-size:40px}
@@ -191,7 +206,7 @@
     .meta{display:none}
     .turn-text{font-size:15px}
     .turn-text .hint{font-size:11.5px; margin-left:5px}
-    .hud{gap:6px; flex-wrap:nowrap}
+    .hud{gap:6px}
     .hud-right{gap:5px}
     .icon-btn{width:29px; height:29px}
     .mode-btn{height:29px}
@@ -249,7 +264,10 @@
       </div>
       <div class="hud-right">
         <span class="you-pill" id="youPill"><i></i><span id="youText">you are red</span></span>
-        <button class="mode-btn room-btn" id="roomBtn" type="button" title="Play with friends">invite</button>
+        <div class="mode-group" role="group" aria-label="Game mode">
+          <button class="mode-btn active" id="passBtn" type="button" aria-pressed="true" title="Everyone plays on this device">Pass and Play</button>
+          <button class="mode-btn room-btn" id="friendsBtn" type="button" aria-pressed="false" title="Create or join a room">Play with friends</button>
+        </div>
         <button class="icon-btn" id="newGame" type="button" aria-label="Start a new game" title="New game">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 4.5h9.5L19 8v11.5H6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -321,6 +339,8 @@
   const youText = document.getElementById('youText');
   const rollBtn = document.getElementById('rollBtn');
   const newBtn = document.getElementById('newGame');
+  const passBtn = document.getElementById('passBtn');
+  const friendsBtn = document.getElementById('friendsBtn');
   const overlay = document.getElementById('overlay');
 
   let W = 0, H = 0, cell = 40, pad = 10, dpr = 1, bg = null;
@@ -363,7 +383,7 @@
   function initialState(players){
     return {
       players: players.map(function(p, i){
-        return {name: p.name || COLORS[i].name, color: i, tokens: [-1,-1,-1,-1], online: p.online !== false};
+        return {name: p.name || COLORS[i].name, color: i, tokens: [-1,-1,-1,-1], online: p.online !== false, removed: !!p.removed};
       }),
       turn: 0, die: null, rolled: false, winner: null, started: true,
       message: who0(players[0], 0) + ' to roll'
@@ -378,7 +398,7 @@
   function waitingState(players){
     const ps = [0,1,2,3].map(function(i){
       const p = (players || []).find(function(x){ return x.seat === i; });
-      return {name: p ? p.name : COLORS[i].name, color: i, tokens: [-1,-1,-1,-1], online: p ? p.online !== false : false};
+      return {name: p ? p.name : COLORS[i].name, color: i, tokens: [-1,-1,-1,-1], online: p ? p.online !== false : false, removed: !!(p && p.removed)};
     });
     return {players: ps, turn: 0, die: null, rolled: false, winner: null, started: false, message: 'waiting for players'};
   }
@@ -580,6 +600,10 @@
   }
 
   function roll(){
+    if (imHost() && !roomStarted){
+      if (hereCount() >= 2) PaperRoom.start();
+      return;
+    }
     if (roomMode && window.PaperRoom && PaperRoom.role === 'host' && state && state.started && state.winner == null && state.players[state.turn].online === false){
       endTurn();
       return;
@@ -634,7 +658,7 @@
     winnerShown = false;
     const ps = [0,1,2,3].map(function(i){
       const p = players.find(function(x){ return x.seat === i; });
-      return {name: p ? p.name : COLORS[i].name, online: p ? p.online !== false : false};
+      return {name: p ? p.name : COLORS[i].name, online: p ? p.online !== false : false, removed: !!(p && p.removed)};
     });
     state = initialState(ps);
     state.started = true;
@@ -902,7 +926,7 @@
   }
 
   function drawTokens(now){
-    for (let p = 0; p < 4; p++){
+    for (let p = 0; p < shownSeats(); p++){
       for (let t = 0; t < 4; t++){
         let pos;
         let moving = false;
@@ -965,7 +989,24 @@
     ctx.clearRect(0, 0, W, H);
     if (bg) ctx.drawImage(bg, 0, 0, W, H);
     if (!state) return;
-    drawActiveBase(now);
+    // corners that nobody plays in a 2 or 3 player room are left blank
+    const shown = shownSeats();
+    if (shown < 4){
+      for (let p = shown; p < 4; p++){
+        const c = COLORS[p];
+        const sx = pad + c.base.x * cell;
+        const sy = pad + c.base.y * cell;
+        ctx.save();
+        ctx.fillStyle = 'rgba(251,244,226,.74)';
+        roundRect(ctx, sx + 1, sy + 1, cell * 6 - 2, cell * 6 - 2, cell * 0.42);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(58,55,50,.22)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    if (state.turn < shown) drawActiveBase(now);
     if (state.rolled && state.winner == null && isMyTurn()){
       const moves = legalMovesForCurrent();
       for (let i = 0; i < moves.length; i++){
@@ -1065,10 +1106,30 @@
     turnChip.style.background = turn.hex;
   }
 
+  function shownSeats(){
+    return roomMode && window.PaperRoom ? Math.min(4, Math.max(2, PaperRoom.size)) : 4;
+  }
+
+  function hereCount(){
+    return state.players.slice(0, shownSeats()).filter(function(p){ return p.online !== false; }).length;
+  }
+
+  function imHost(){
+    return !!(roomMode && window.PaperRoom && PaperRoom.role === 'host');
+  }
+
   function turnWording(){
     if (!state) return {name:'ludo', hint:'', mine:false};
     if (state.winner != null) return {name: who(state.winner), hint: 'wins', mine: false};
-    if (!state.started) return {name: 'waiting', hint: 'for players', mine: false};
+    if (!state.started){
+      if (roomMode){
+        if (imHost()) return hereCount() < 2
+          ? {name: 'waiting', hint: 'for a rival', mine: false}
+          : {name: 'ready', hint: 'start when you are', mine: false};
+        return {name: 'waiting', hint: 'for the host to start', mine: false};
+      }
+      return {name: 'waiting', hint: 'for players', mine: false};
+    }
     const p = state.players[state.turn];
     if (isMyTurn()){
       return {
@@ -1107,27 +1168,34 @@
 
     const skip = roomMode && window.PaperRoom && PaperRoom.role === 'host' &&
       state.started && state.winner == null && state.players[state.turn].online === false;
+    const startHere = imHost() && !roomStarted && hereCount() >= 2;
+    passBtn.classList.toggle('active', !roomMode);
+    passBtn.setAttribute('aria-pressed', String(!roomMode));
+    friendsBtn.setAttribute('aria-pressed', String(!!roomMode));
     newBtn.disabled = roomMode;
     newBtn.title = roomMode ? 'In a room — open the room panel to leave' : 'New game';
-    rollBtn.disabled = !canAct() && !skip;
-    rollBtn.textContent = skip ? 'skip turn' : pending ? 'waiting…'
+    rollBtn.disabled = startHere ? false : (!canAct() && !skip);
+    rollBtn.textContent = startHere ? 'start game' : (skip ? 'skip turn' : pending ? 'waiting…'
       : (state.winner != null ? 'game over'
-      : (!state.started ? 'waiting'
+      : (!state.started ? (roomMode ? (imHost() ? 'waiting' : 'waiting for host') : 'waiting')
       : (state.rolled ? 'pick a pencil'
-      : (isMyTurn() ? 'roll' : 'waiting'))));
+      : (isMyTurn() ? 'roll' : 'waiting')))));
+    rollBtn.classList.toggle('primary', startHere);
     diePad.disabled = rollBtn.disabled;
-    diePad.classList.toggle('can-roll', !rollBtn.disabled && canAct());
+    diePad.classList.toggle('can-roll', !rollBtn.disabled && (canAct() || startHere));
 
-    railEl.innerHTML = state.players.map(function(pl, i){
+    const shown = shownSeats();
+    railEl.innerHTML = state.players.slice(0, shown).map(function(pl, i){
       const cur = i === state.turn && state.started && state.winner == null;
       const mine = roomMode && i === mySeat;
       const away = pl.online === false;
-      const empty = away && (!pl.name || pl.name.toLowerCase() === colorName(i));
+      const removed = !!pl.removed;
+      const empty = away && !removed && (!pl.name || pl.name.toLowerCase() === colorName(i));
       const home = pl.tokens.filter(function(v){ return v === 56; }).length;
       const out = pl.tokens.filter(function(v){ return v >= 0 && v < 56; }).length;
-      const tag = mine ? 'you' : (empty ? '' : (away ? 'away' : (roomMode && i === 0 ? 'host' : '')));
-      const meta = empty ? 'empty' : away ? '—' : (home ? home + ' home' : out ? out + ' out' : 'base');
-      return '<li class="rail-row' + (cur ? ' current' : '') + (away ? ' out' : '') + '">' +
+      const tag = removed ? 'removed' : (mine ? 'you' : (empty ? '' : (away ? 'away' : (roomMode && i === 0 ? 'host' : ''))));
+      const meta = empty ? 'empty' : removed ? 'out' : away ? '—' : (home ? home + ' home' : out ? out + ' out' : 'base');
+      return '<li class="rail-row' + (cur ? ' current' : '') + (away && !removed ? ' out' : '') + (removed ? ' gone' : '') + '">' +
         '<span class="rail-dot" style="background:' + COLORS[i].hex + '"></span>' +
         '<span class="rail-name">' + esc(pl.name) + (tag ? '<span class="rail-tag">' + tag + '</span>' : '') + '</span>' +
         '<span class="rail-meta">' + meta + '</span>' +
@@ -1156,8 +1224,10 @@
       gameName: 'ludo',
       maxPlayers: 4,
       minPlayers: 2,
+      choices: [2, 3, 4],
       canStart: true,
-      roomBtn: 'roomBtn',
+      roomBtn: 'friendsBtn',
+      roomBtnLabel: 'Play with friends',
       seatNames: ['red', 'green', 'yellow', 'blue'],
       seatColors: COLORS.map(function(c){ return c.hex; }),
       onAction: handleRoomAction,
@@ -1190,14 +1260,30 @@
       },
       onPlayers: function(players){
         if (!state) return;
+        let dirty = false;
         (players || []).forEach(function(p){
-          if (state.players[p.seat]) state.players[p.seat].online = p.online !== false;
+          const sp = state.players[p.seat];
+          if (!sp) return;
+          sp.online = p.online !== false;
+          sp.removed = !!p.removed;
+          // a removed pencil is out: its tokens go back to the base for good
+          if (p.removed && sp.tokens.some(function(v){ return v !== -1; })){
+            sp.tokens = [-1, -1, -1, -1];
+            dirty = true;
+          }
         });
         if (roomMode && !roomStarted && state.winner == null){
           state = waitingState(players || []);
+          dirty = false;
         }
         updateUI();
         render(performance.now());
+        if (dirty && imHost()) PaperRoom.publish();
+        // don't leave the table stuck on a seat that was just removed
+        if (imHost() && roomStarted && state.started && state.winner == null &&
+            state.players[state.turn] && state.players[state.turn].removed){
+          endTurn();
+        }
       },
       onStart: function(players){
         startOnline(players);
@@ -1211,6 +1297,10 @@
   rollBtn.addEventListener('click', roll);
   newBtn.addEventListener('click', newGame);
   diePad.addEventListener('click', roll);
+  passBtn.addEventListener('click', function(){
+    if (!roomMode) return;
+    if (window.confirm('leave the online room and go back to pass and play?')) PaperRoom.leave();
+  });
 
   canvas.addEventListener('pointerdown', function(e){
     if (!state || !state.started || state.winner != null) return;

@@ -119,6 +119,36 @@
 .pg-btn:hover{background:rgba(58,55,50,.07)}
 .pg-btn.primary{background:rgba(58,55,50,.09)}
 .pg-btn:disabled{opacity:.4; cursor:default}
+.pg-field .pg-seg{display:inline-flex; gap:6px}
+.pg-seg-btn{
+  appearance:none;
+  min-width:40px;
+  padding:5px 0 6px;
+  font-family:var(--pg-hand);
+  font-size:15px;
+  color:var(--pg-ink);
+  background:rgba(255,255,255,.3);
+  border:1.4px solid rgba(58,55,50,.45);
+  border-radius:10px 4px 9px 5px / 5px 9px 4px 10px;
+  cursor:pointer;
+}
+.pg-seg-btn:hover{background:rgba(58,55,50,.07)}
+.pg-seg-btn.active{background:rgba(191,90,78,.14); border-color:var(--pg-red); color:var(--pg-red)}
+.pg-field .pg-seg-hint{display:block; margin-top:5px; font-size:10.5px; color:rgba(58,55,50,.45)}
+.pg-remove{
+  appearance:none;
+  flex:none;
+  padding:2px 7px 3px;
+  font-family:var(--pg-hand);
+  font-size:10.5px;
+  color:var(--pg-red);
+  background:transparent;
+  border:1px solid rgba(191,90,78,.45);
+  border-radius:8px 3px 7px 4px;
+  cursor:pointer;
+}
+.pg-remove:hover{background:rgba(191,90,78,.1)}
+.pg-player.removed{opacity:.4}
 .pg-or{
   margin:14px 0 8px;
   font-size:11px;
@@ -141,6 +171,13 @@
   font-size:24px;
   letter-spacing:.16em;
   color:var(--pg-ink);
+}
+.pg-code-box .pg-tag{
+  font-family:var(--pg-type);
+  font-size:10px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--pg-soft);
 }
 .pg-copy{
   appearance:none;
