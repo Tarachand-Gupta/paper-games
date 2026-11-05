@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paper games — a notebook full of games</title>
+<style>
+  :root{
+    --paper:#fbf4e2;
+    --paper-hi:#fdf8ea;
+    --ink:#3a3733;
+    --soft:rgba(58,55,50,.62);
+    --rule:rgba(96,136,168,.30);
+    --red:#bf5a4e;
+    --green:#6f8f5f;
+    --yellow:#c99a2c;
+    --blue:#5f7f9f;
+    --hand:"Bradley Hand","Chalkboard SE","Segoe Print","Comic Sans MS",cursive;
+    --type:"Courier New",Courier,monospace;
+  }
+  *{box-sizing:border-box}
+  html{height:100%}
+  body{
+    margin:0;
+    min-height:100%;
+    padding:10px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--hand);
+    color:var(--ink);
+    background:
+      radial-gradient(900px 520px at 50% -10%, rgba(255,236,198,.10), transparent 62%),
+      radial-gradient(1200px 800px at 50% 115%, rgba(0,0,0,.55), transparent 68%),
+      repeating-linear-gradient(93deg, #2b241f 0 4px, #29221d 4px 9px, #2d2620 9px 15px, #28211c 15px 19px);
+    background-color:#241e1a;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::after{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    background:radial-gradient(ellipse at center, transparent 44%, rgba(0,0,0,.42) 100%);
+    z-index:5;
+  }
+  .paper{
+    position:relative;
+    width:min(1900px,100%);
+    padding:26px 30px 20px 36px;
+    background-color:var(--paper);
+    background-image:
+      linear-gradient(158deg, rgba(255,250,235,.55), rgba(240,229,203,.10) 58%, rgba(255,255,255,0) 100%),
+      repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule) 27px 28px);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.55) inset,
+      0 30px 70px rgba(0,0,0,.55),
+      0 6px 18px rgba(0,0,0,.32);
+    border:1px solid rgba(90,72,45,.12);
+    animation:settle .6s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes settle{
+    from{opacity:0; transform:translateY(14px) scale(.994)}
+    to{opacity:1; transform:none}
+  }
+  .paper::before{
+    content:"";
+    position:absolute;
+    top:0; bottom:0;
+    left:18px;
+    width:1.5px;
+    background:rgba(191,90,78,.30);
+    box-shadow:4px 0 0 rgba(191,90,78,.13);
+    pointer-events:none;
+    z-index:1;
+  }
+  .paper::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:50;
+    pointer-events:none;
+    opacity:.055;
+    mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
+  }
+  .stain{
+    position:absolute;
+    top:-22px; right:24px;
+    width:132px; height:126px;
+    border-radius:47% 53% 50% 50%;
+    transform:rotate(14deg);
+    background:radial-gradient(circle at 50% 50%,
+      transparent 0 52%,
+      rgba(132,92,48,.13) 54%,
+      rgba(132,92,48,.07) 57%,
+      rgba(132,92,48,.015) 60%,
+      transparent 62%);
+    filter:blur(.6px);
+    pointer-events:none;
+    z-index:0;
+  }
+
+  header{
+    position:relative;
+    z-index:3;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:18px;
+  }
+  h1{
+    margin:0;
+    font-weight:400;
+    font-size:clamp(56px,7vw,104px);
+    line-height:.82;
+    letter-spacing:.01em;
+    transform:rotate(-2deg);
+    transform-origin:left bottom;
+    filter:url(#pencil-edge);
+  }
+  h1 span{display:inline-block; transform:translateY(var(--y,0)) rotate(var(--r,0deg))}
+  .subtitle{
+    margin:10px 0 0 3px;
+    font-size:clamp(14px,1.2vw,17px);
+    color:var(--soft);
+    transform:rotate(-.8deg);
+  }
+  .meta{
+    flex:none;
+    text-align:right;
+    font-family:var(--type);
+    font-size:11px;
+    line-height:1.75;
+    letter-spacing:.11em;
+    color:rgba(58,55,50,.58);
+    transform:rotate(1.2deg);
+    padding-top:8px;
+  }
+  .meta b{font-weight:400; display:block}
+  .meta .no{font-size:13px; letter-spacing:.18em; color:rgba(58,55,50,.72)}
+
+  .rule{
+    display:block;
+    width:100%;
+    height:7px;
+    margin:12px 0 4px;
+    color:var(--ink);
+    overflow:visible;
+    position:relative;
+    z-index:2;
+  }
+
+  .intro{
+    position:relative;
+    z-index:3;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:18px;
+    margin:10px 0 18px;
+  }
+  .intro p{
+    margin:0;
+    max-width:720px;
+    font-size:clamp(15px,1.3vw,19px);
+    line-height:1.45;
+    color:rgba(58,55,50,.78);
+  }
+  .intro p b{font-weight:400; color:var(--red)}
+  .filters{display:flex; flex-wrap:wrap; gap:7px; justify-content:flex-end}
+  .chip{
+    appearance:none;
+    padding:5px 12px 6px;
+    font-family:var(--hand);
+    font-size:13px;
+    color:rgba(58,55,50,.72);
+    background:transparent;
+    border:1.3px solid rgba(58,55,50,.35);
+    border-radius:12px 5px 10px 6px / 6px 10px 5px 12px;
+    cursor:pointer;
+  }
+  .chip:hover{background:rgba(58,55,50,.06)}
+  .chip.active{background:rgba(58,55,50,.1); border-color:rgba(58,55,50,.6); color:var(--ink)}
+  .chip:focus-visible{outline:2px solid var(--red); outline-offset:2px}
+
+  .games{
+    position:relative;
+    z-index:3;
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:18px;
+  }
+  .game-card{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    min-height:330px;
+    color:var(--ink);
+    text-decoration:none;
+    background:var(--paper-hi);
+    border:1.5px solid rgba(58,55,50,.55);
+    border-radius:20px 7px 17px 8px / 8px 17px 7px 20px;
+    box-shadow:2px 3px 0 rgba(58,55,50,.08);
+    overflow:hidden;
+    transition:transform .18s ease, box-shadow .18s ease;
+    transform:rotate(var(--tilt,-.35deg));
+  }
+  .game-card:nth-child(2){--tilt:.4deg}
+  .game-card:nth-child(3){--tilt:-.2deg}
+  .game-card:hover{
+    transform:rotate(0deg) translateY(-4px);
+    box-shadow:4px 8px 0 rgba(58,55,50,.10);
+  }
+  .game-card:focus-visible{outline:2px solid var(--red); outline-offset:4px}
+  .card-art{
+    position:relative;
+    height:190px;
+    flex:none;
+    display:grid;
+    place-items:center;
+    border-bottom:1px dashed rgba(58,55,50,.22);
+    background:
+      linear-gradient(160deg, rgba(255,255,255,.35), transparent 70%),
+      repeating-linear-gradient(to bottom, transparent 0 23px, rgba(96,136,168,.14) 23px 24px);
+  }
+  .card-art svg{width:82%; height:82%; overflow:visible}
+  .stamp{
+    position:absolute;
+    top:12px; right:14px;
+    padding:2px 8px 3px;
+    font-family:var(--type);
+    font-size:10px;
+    letter-spacing:.12em;
+    color:var(--red);
+    border:1.3px solid rgba(191,90,78,.55);
+    border-radius:50%;
+    transform:rotate(8deg);
+    background:rgba(253,248,234,.7);
+  }
+  .card-body{padding:16px 18px 16px; display:flex; flex-direction:column; flex:1}
+  .card-top{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+  .card-top h2{
+    margin:0;
+    font-weight:400;
+    font-size:clamp(30px,2.6vw,40px);
+    line-height:1;
+    transform:rotate(-1deg);
+  }
+  .card-body p{
+    margin:7px 0 0;
+    font-size:14px;
+    line-height:1.45;
+    color:rgba(58,55,50,.7);
+    flex:1;
+  }
+  .card-tags{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px}
+  .card-tags span{
+    font-size:10.5px;
+    letter-spacing:.03em;
+    color:rgba(58,55,50,.55);
+    border-bottom:1px solid rgba(58,55,50,.25);
+    padding-bottom:1px;
+  }
+  .card-play{
+    margin-top:12px;
+    font-size:13px;
+    color:rgba(58,55,50,.78);
+  }
+  .card-play:after{content:" →"; color:var(--red)}
+
+  .join-card{
+    position:relative;
+    z-index:3;
+    margin-top:20px;
+    padding:18px 22px 16px;
+    background:rgba(253,248,234,.55);
+    border:1.5px dashed rgba(58,55,50,.45);
+    border-radius:14px 5px 12px 6px / 6px 12px 5px 14px;
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:22px;
+    flex-wrap:wrap;
+  }
+  .join-copy{max-width:520px}
+  .join-copy h2{margin:0; font-weight:400; font-size:26px; line-height:1; transform:rotate(-.6deg)}
+  .join-copy p{margin:5px 0 0; font-size:13px; line-height:1.45; color:var(--soft)}
+  .join-copy p b{font-weight:400; color:var(--red)}
+  .join-form{display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap}
+  .join-field{display:flex; flex-direction:column; gap:3px; font-size:10px; color:rgba(58,55,50,.45)}
+  .join-field select,
+  .join-field input{
+    height:38px;
+    padding:0 10px;
+    font-family:var(--hand);
+    font-size:15px;
+    color:var(--ink);
+    background:rgba(255,255,255,.4);
+    border:1.4px solid rgba(58,55,50,.5);
+    border-radius:9px 4px 8px 5px / 5px 8px 4px 9px;
+    outline:none;
+  }
+  .join-field input{
+    width:150px;
+    letter-spacing:.22em;
+    text-transform:uppercase;
+    text-align:center;
+  }
+  .join-field input:focus{border-color:var(--ink); box-shadow:0 0 0 2px rgba(191,90,78,.15)}
+  .join-btn{
+    appearance:none;
+    height:38px;
+    padding:0 16px;
+    font-family:var(--hand);
+    font-size:14px;
+    color:var(--ink);
+    background:rgba(58,55,50,.08);
+    border:1.4px solid rgba(58,55,50,.6);
+    border-radius:11px 4px 9px 5px / 5px 9px 4px 11px;
+    cursor:pointer;
+  }
+  .join-btn:hover{background:rgba(58,55,50,.13)}
+  .join-btn:focus-visible{outline:2px solid var(--red); outline-offset:2px}
+  .join-error{
+    width:100%;
+    margin:0;
+    font-size:11px;
+    color:var(--red);
+  }
+
+  footer{
+    position:relative;
+    z-index:3;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:14px;
+    margin-top:16px;
+    font-size:11px;
+    color:rgba(58,55,50,.5);
+  }
+  footer .page{font-family:var(--type); font-size:10px; letter-spacing:.16em}
+  .doodle{
+    position:absolute;
+    right:4px;
+    bottom:-2px;
+    width:52px;
+    height:34px;
+    opacity:.32;
+    pointer-events:none;
+    z-index:2;
+  }
+
+  @media (max-width:1050px){
+    .games{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (max-width:700px){
+    body{padding:8px}
+    .paper{padding:18px 16px 14px 26px}
+    .paper::before{left:12px}
+    .stain{width:100px; height:96px; top:-16px; right:10px}
+    header{gap:10px}
+    .meta{font-size:9px}
+    .intro{align-items:flex-start; flex-direction:column; gap:10px}
+    .filters{justify-content:flex-start}
+    .games{grid-template-columns:1fr; gap:14px}
+    .game-card{min-height:300px}
+    .card-art{height:165px}
+    .join-card{padding:16px}
+    .join-form{width:100%}
+    .join-field input{width:130px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .paper{animation:none}
+    .game-card{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="pencil-edge" x="-8%" y="-15%" width="116%" height="135%">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale=".9" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<main class="paper">
+  <div class="stain" aria-hidden="true"></div>
+
+  <header>
+    <div>
+      <h1 aria-label="paper games">
+        <span style="--r:-3deg;--y:2px">p</span><span style="--r:2deg;--y:-1px">a</span><span style="--r:-2deg;--y:1px">p</span><span style="--r:3deg;--y:-2px">e</span><span style="--r:-1deg;--y:2px">r</span>
+        <span style="--r:2deg;--y:1px">&nbsp;</span>
+        <span style="--r:-2deg;--y:2px">g</span><span style="--r:3deg;--y:-1px">a</span><span style="--r:-1deg;--y:1px">m</span><span style="--r:2deg;--y:-2px">e</span><span style="--r:-2deg;--y:1px">s</span>
+      </h1>
+      <p class="subtitle">a notebook full of games</p>
+    </div>
+    <div class="meta" aria-hidden="true">
+      <b>nov 3, 2026</b>
+      <b>tuesday afternoon</b>
+      <span class="no">no. 01</span>
+    </div>
+  </header>
+
+  <svg class="rule" viewBox="0 0 600 7" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 3 C 60 2, 118 4.4, 180 3.1 S 300 1.6, 366 3.4 S 500 4.6, 600 2.7" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".34" stroke-linecap="round"/>
+    <path d="M0 4.4 C 80 3.4, 150 5, 228 3.9 S 388 2.6, 466 4.2 S 552 3.1, 600 3.8" fill="none" stroke="currentColor" stroke-width=".65" opacity=".18" stroke-linecap="round"/>
+  </svg>
+
+  <div class="intro">
+    <p>Pick a page. For a multiplayer game, open it, press <b>invite</b>, and share the seven-character code.</p>
+    <div class="filters" aria-label="Filter games">
+      <button class="chip active" data-filter="all" type="button">all</button>
+      <button class="chip" data-filter="multiplayer" type="button">multiplayer</button>
+      <button class="chip" data-filter="2p" type="button">2 players</button>
+      <button class="chip" data-filter="4p" type="button">4 players</button>
+      <button class="chip" data-filter="solo" type="button">solo</button>
+    </div>
+  </div>
+
+  <section class="games" id="games">
+    <a class="game-card" href="games/chess/" data-tags="multiplayer 2p">
+      <div class="card-art">
+        <span class="stamp">2P</span>
+        <svg viewBox="0 0 300 160" aria-hidden="true">
+          <g transform="rotate(-1.2 150 80)">
+            <rect x="52" y="18" width="150" height="124" fill="none" stroke="#3a3733" stroke-width="1.6"/>
+            <g fill="rgba(58,55,50,.07)">
+              <rect x="52" y="18" width="18.75" height="15.5"/>
+              <rect x="89.5" y="18" width="18.75" height="15.5"/>
+              <rect x="127" y="18" width="18.75" height="15.5"/>
+              <rect x="164.5" y="18" width="18.75" height="15.5"/>
+              <rect x="70.75" y="33.5" width="18.75" height="15.5"/>
+              <rect x="108.25" y="33.5" width="18.75" height="15.5"/>
+              <rect x="145.75" y="33.5" width="18.75" height="15.5"/>
+              <rect x="183.25" y="33.5" width="18.75" height="15.5"/>
+            </g>
+            <g fill="none" stroke="#3a3733" stroke-width="1.3" stroke-linecap="round">
+              <path d="M80 126c0-9 6-15 15-15s15 6 15 15"/>
+              <path d="M86 111h18M92 105h6"/>
+              <path d="M140 121v-12l10-9 10 9v12z"/>
+              <path d="M137 121h26M145 96h10"/>
+              <path d="M186 121c0-7 5-12 11-12s11 5 11 12M190 109v-7h14v7M193 102l4-6 4 6"/>
+            </g>
+            <circle cx="95" cy="44" r="6" fill="none" stroke="#bf5a4e" stroke-width="1.4"/>
+            <path d="M88 58h14M90 64h10" fill="none" stroke="#bf5a4e" stroke-width="1.1" stroke-linecap="round"/>
+          </g>
+          <path d="M226 40c18 8 27 24 23 43" fill="none" stroke="#3a3733" stroke-width="1" stroke-dasharray="3 5" opacity=".45"/>
+        </svg>
+      </div>
+      <div class="card-body">
+        <div class="card-top"><h2>chess</h2><span class="card-play">open</span></div>
+        <p>a quiet game in pencil. castling, checks, and a very polite computer.</p>
+        <div class="card-tags"><span>multiplayer</span><span>turn-based</span><span>2 players</span></div>
+      </div>
+    </a>
+
+    <a class="game-card" href="games/ludo/" data-tags="multiplayer 4p">
+      <div class="card-art">
+        <span class="stamp">4P</span>
+        <svg viewBox="0 0 300 160" aria-hidden="true">
+          <g transform="rotate(.8 150 80)">
+            <path d="M112 18h76v38h38v48h-38v38h-76v-38H74V56h38z" fill="none" stroke="#3a3733" stroke-width="1.5"/>
+            <rect x="52" y="18" width="52" height="52" fill="rgba(111,143,95,.15)" stroke="#3a3733" stroke-width="1.2"/>
+            <rect x="196" y="18" width="52" height="52" fill="rgba(201,154,44,.16)" stroke="#3a3733" stroke-width="1.2"/>
+            <rect x="52" y="90" width="52" height="52" fill="rgba(191,90,78,.14)" stroke="#3a3733" stroke-width="1.2"/>
+            <rect x="196" y="90" width="52" height="52" fill="rgba(95,127,159,.15)" stroke="#3a3733" stroke-width="1.2"/>
+            <g fill="none" stroke="#3a3733" stroke-width="1.1" opacity=".65">
+              <path d="M112 56h76M112 104h76M112 18v124M188 18v124"/>
+            </g>
+            <g>
+              <circle cx="78" cy="44" r="6" fill="#6f8f5f" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="98" cy="44" r="6" fill="#6f8f5f" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="78" cy="64" r="6" fill="#6f8f5f" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="98" cy="64" r="6" fill="#6f8f5f" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="222" cy="44" r="6" fill="#c99a2c" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="202" cy="44" r="6" fill="#c99a2c" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="222" cy="64" r="6" fill="#c99a2c" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="202" cy="64" r="6" fill="#c99a2c" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="78" cy="116" r="6" fill="#bf5a4e" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="98" cy="116" r="6" fill="#bf5a4e" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="78" cy="136" r="6" fill="#bf5a4e" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="98" cy="136" r="6" fill="#bf5a4e" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="222" cy="116" r="6" fill="#5f7f9f" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="202" cy="116" r="6" fill="#5f7f9f" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="222" cy="136" r="6" fill="#5f7f9f" stroke="#3a3733" stroke-width="1.1"/>
+              <circle cx="202" cy="136" r="6" fill="#5f7f9f" stroke="#3a3733" stroke-width="1.1"/>
+            </g>
+            <path d="M150 68l18 12-18 12-18-12z" fill="rgba(58,55,50,.08)" stroke="#3a3733" stroke-width="1.2"/>
+            <path d="M150 74l9 6-9 6-9-6z" fill="none" stroke="#bf5a4e" stroke-width="1.2"/>
+          </g>
+        </svg>
+      </div>
+      <div class="card-body">
+        <div class="card-top"><h2>ludo</h2><span class="card-play">open</span></div>
+        <p>four pencils, one page. roll a six, race the track, and send everyone home.</p>
+        <div class="card-tags"><span>multiplayer</span><span>dice</span><span>4 players</span></div>
+      </div>
+    </a>
+
+    <a class="game-card" href="games/snake/" data-tags="solo">
+      <div class="card-art">
+        <span class="stamp">1P</span>
+        <svg viewBox="0 0 300 160" aria-hidden="true">
+          <g transform="rotate(-.6 150 80)">
+            <path d="M58 118c14-34 40-30 54-12s30 30 52 10 28-54 54-56" fill="none" stroke="#3a3733" stroke-width="11" stroke-linecap="round"/>
+            <path d="M58 118c14-34 40-30 54-12s30 30 52 10 28-54 54-56" fill="none" stroke="#fdf8ea" stroke-width="3" stroke-linecap="round" opacity=".18"/>
+            <circle cx="219" cy="59" r="10" fill="#3a3733"/>
+            <circle cx="216" cy="55" r="2.3" fill="#fdf8ea"/>
+            <circle cx="222" cy="55" r="2.3" fill="#fdf8ea"/>
+            <circle cx="219" cy="62" r="1.6" fill="#fdf8ea"/>
+            <path d="M228 61l10 3m-10-3l10-4" fill="none" stroke="#bf5a4e" stroke-width="1.3" stroke-linecap="round"/>
+            <circle cx="92" cy="44" r="10" fill="rgba(191,90,78,.15)" stroke="#bf5a4e" stroke-width="1.6"/>
+            <path d="M92 33v-5M92 31c4-5 9-4 10-1-4 3-8 3-10 1z" fill="none" stroke="#3a3733" stroke-width="1.2" stroke-linecap="round"/>
+            <path d="M83 48h18M85 53h14" fill="none" stroke="#bf5a4e" stroke-width="1" opacity=".5"/>
+          </g>
+          <g fill="rgba(58,55,50,.22)">
+            <circle cx="60" cy="30" r="1.2"/><circle cx="90" cy="130" r="1.2"/><circle cx="250" cy="120" r="1.2"/>
+            <circle cx="235" cy="25" r="1.2"/><circle cx="140" cy="140" r="1.2"/>
+          </g>
+        </svg>
+      </div>
+      <div class="card-body">
+        <div class="card-top"><h2>snake</h2><span class="card-play">open</span></div>
+        <p>the original margin doodle. eat apples, grow longer, and don’t bite your tail.</p>
+        <div class="card-tags"><span>solo</span><span>arcade</span><span>one more go</span></div>
+      </div>
+    </a>
+  </section>
+
+  <section class="join-card" aria-label="Join a room">
+    <div class="join-copy">
+      <h2>join a room</h2>
+      <p>Open the same game, then type the <b>seven-character code</b>. Or open the game and press <b>invite</b> to start one.</p>
+    </div>
+    <form class="join-form" id="joinForm">
+      <label class="join-field"><span>game</span>
+        <select id="joinGame">
+          <option value="chess">chess</option>
+          <option value="ludo">ludo</option>
+        </select>
+      </label>
+      <label class="join-field"><span>invite code</span>
+        <input id="joinCode" maxlength="200" placeholder="ABC-1234" autocomplete="off" spellcheck="false" aria-label="Invite code">
+      </label>
+      <button class="join-btn" type="submit">join</button>
+      <p class="join-error" id="joinError" role="status"></p>
+    </form>
+  </section>
+
+  <footer>
+    <span>made of paper, graphite, and a little JavaScript.</span>
+    <span class="page">page 1</span>
+  </footer>
+
+  <svg class="doodle" viewBox="0 0 52 34" aria-hidden="true">
+    <path d="M4 27c8-16 16-15 20-7s10 9 14 1 8-9 10-5" fill="none" stroke="#3a3733" stroke-width="1.2" stroke-linecap="round"/>
+    <circle cx="48" cy="16" r="1.8" fill="#3a3733"/>
+  </svg>
+</main>
+
+<script>
+(function(){
+  'use strict';
+
+  const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+  const cards = Array.prototype.slice.call(document.querySelectorAll('.game-card'));
+
+  chips.forEach(function(chip){
+    chip.addEventListener('click', function(){
+      chips.forEach(function(c){ c.classList.toggle('active', c === chip); });
+      const filter = chip.dataset.filter;
+      cards.forEach(function(card){
+        const tags = (card.dataset.tags || '').split(/\s+/);
+        card.style.display = (filter === 'all' || tags.indexOf(filter) !== -1) ? '' : 'none';
+      });
+    });
+  });
+
+  function norm(s){
+    let v = String(s || '').trim();
+    const hash = v.indexOf('#');
+    if (hash !== -1) v = v.slice(hash + 1);
+    return v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
+  }
+
+  function valid(s){
+    return /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{7}$/.test(s);
+  }
+
+  const form = document.getElementById('joinForm');
+  const input = document.getElementById('joinCode');
+  const game = document.getElementById('joinGame');
+  const err = document.getElementById('joinError');
+
+  input.addEventListener('input', function(){
+    input.value = norm(input.value);
+    err.textContent = '';
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    const code = norm(input.value);
+    if (!valid(code)){
+      err.textContent = 'That code is not 7 characters. Check the card and try again.';
+      input.focus();
+      return;
+    }
+    location.href = 'games/' + game.value + '/#' + code;
+  });
+})();
+</script>
+</body>
+</html>

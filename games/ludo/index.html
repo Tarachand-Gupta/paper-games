@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ludo — four pencils, one page</title>
+<style>
+  :root{
+    --paper:#fbf4e2; --paper-hi:#fdf8ea; --ink:#3a3733; --soft:rgba(58,55,50,.62);
+    --rule:rgba(96,136,168,.30); --red:#bf5a4e; --green:#6f8f5f; --yellow:#c99a2c; --blue:#5f7f9f;
+    --hand:"Bradley Hand","Chalkboard SE","Segoe Print","Comic Sans MS",cursive;
+    --type:"Courier New",Courier,monospace;
+    --accent:#bf5a4e; --accent-glow:rgba(191,90,78,.20); --accent-wash:rgba(191,90,78,.09);
+    --turn:#bf5a4e; --turn-wash:rgba(191,90,78,.13); --turn-ring:rgba(191,90,78,.45);
+  }
+  *{box-sizing:border-box}
+  html{height:100%}
+  body{
+    margin:0; min-height:100%; padding:10px 12px; display:flex; align-items:flex-start; justify-content:center;
+    font-family:var(--hand); color:var(--ink);
+    background:
+      radial-gradient(760px 520px at 50% 6%, var(--accent-glow), transparent 68%),
+      radial-gradient(900px 520px at 50% -10%, rgba(255,236,198,.10), transparent 62%),
+      radial-gradient(1200px 800px at 50% 115%, rgba(0,0,0,.55), transparent 68%),
+      repeating-linear-gradient(93deg, #2b241f 0 4px, #29221d 4px 9px, #2d2620 9px 15px, #28211c 15px 19px);
+    background-color:#241e1a; overflow-x:hidden; -webkit-font-smoothing:antialiased;
+    transition:background-color .3s ease;
+  }
+  body::after{content:""; position:fixed; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at center, transparent 42%, rgba(0,0,0,.42) 100%); z-index:5}
+  .paper{
+    position:relative; width:min(1900px,100%); margin:auto; padding:24px 28px 16px 34px;
+    background-color:var(--paper);
+    background-image:
+      linear-gradient(var(--accent-wash), var(--accent-wash)),
+      linear-gradient(158deg, rgba(255,250,235,.55), rgba(240,229,203,.10) 58%, rgba(255,255,255,0) 100%),
+      repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule) 27px 28px);
+    box-shadow:0 1px 0 rgba(255,255,255,.55) inset, 0 30px 70px rgba(0,0,0,.55), 0 6px 18px rgba(0,0,0,.32);
+    border:1px solid rgba(90,72,45,.12);
+    animation:settle .65s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes settle{from{opacity:0; transform:translateY(16px) scale(.992)} to{opacity:1; transform:none}}
+  .paper::before{content:""; position:absolute; top:0; bottom:0; left:18px; width:1.5px;
+    background:rgba(191,90,78,.30); box-shadow:4px 0 0 rgba(191,90,78,.13); pointer-events:none; z-index:1}
+  .paper::after{content:""; position:absolute; inset:0; z-index:50; pointer-events:none; opacity:.055; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E")}
+  .stain{position:absolute; top:-20px; right:22px; width:124px; height:118px; border-radius:47% 53% 50% 50%;
+    transform:rotate(14deg); background:radial-gradient(circle at 50% 50%, transparent 0 52%, rgba(132,92,48,.13) 54%, rgba(132,92,48,.07) 57%, rgba(132,92,48,.015) 60%, transparent 62%);
+    filter:blur(.6px); pointer-events:none; z-index:0}
+  header{position:relative; z-index:3; display:flex; justify-content:space-between; align-items:flex-start; gap:18px}
+  .title{margin:0; font-weight:400; font-size:clamp(44px,5vw,74px); line-height:.84; letter-spacing:.01em;
+    color:#332f2a; transform:rotate(-2.2deg); transform-origin:left bottom; filter:url(#pencil-edge)}
+  .title span{display:inline-block; transform:translateY(var(--y,0)) rotate(var(--r,0deg))}
+  .subtitle{margin:7px 0 0 2px; font-size:13px; letter-spacing:.05em; color:var(--soft); transform:rotate(-1deg)}
+  .meta{flex:none; text-align:right; font-family:var(--type); font-size:11px; line-height:1.75; letter-spacing:.11em;
+    color:rgba(58,55,50,.58); transform:rotate(1.2deg); padding-top:6px}
+  .meta b{font-weight:400; display:block}
+  .meta .no{font-size:12px; letter-spacing:.18em; color:rgba(58,55,50,.72)}
+  .rule{display:block; width:100%; height:7px; margin:8px 0 4px; color:var(--ink); overflow:visible}
+  .game-col{width:min(100%,1040px); margin:0 auto}
+
+  /* ---------- turn banner ---------- */
+  .hud{position:relative; z-index:3; display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 12px; min-height:44px; flex-wrap:wrap}
+  .turn-banner{display:flex; align-items:center; gap:10px; min-width:0; padding:6px 14px 7px 12px;
+    border:1.4px solid rgba(58,55,50,.38); border-radius:15px 6px 13px 7px / 7px 13px 6px 15px;
+    background:var(--turn-wash); transition:background .18s ease, border-color .18s ease}
+  .turn-banner .label{font-family:var(--type); font-size:9px; letter-spacing:.2em; text-transform:uppercase;
+    color:rgba(58,55,50,.55); padding-right:9px; border-right:1px solid rgba(58,55,50,.22)}
+  .turn-chip{flex:none; width:16px; height:16px; border-radius:50%; background:var(--turn);
+    border:1.6px solid rgba(58,55,50,.8); box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+  .turn-text{font-size:20px; line-height:1.05; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0}
+  .turn-text .hint{font-size:13px; color:rgba(58,55,50,.6); margin-left:9px}
+  .turn-text .hint::before{content:"·"; margin-right:7px; color:rgba(58,55,50,.4)}
+  .turn-banner.mine{border-color:var(--turn); box-shadow:0 0 0 3px var(--turn-ring)}
+  .hud-right{display:flex; align-items:center; gap:7px; flex:none; margin-left:auto}
+  .you-pill{display:none; align-items:center; gap:6px; padding:3px 9px 4px; font-size:11.5px;
+    border:1px dashed rgba(58,55,50,.35); border-radius:11px 4px 10px 5px}
+  .you-pill.show{display:inline-flex}
+  .you-pill i{width:9px; height:9px; border-radius:50%; border:1px solid rgba(58,55,50,.55); background:var(--accent)}
+  .mode-btn{appearance:none; height:31px; padding:0 10px; font-family:var(--hand); font-size:12px;
+    color:rgba(58,55,50,.82); background:transparent; border:1.4px solid rgba(58,55,50,.5);
+    border-radius:10px 4px 9px 5px / 5px 9px 4px 10px; cursor:pointer; white-space:nowrap}
+  .mode-btn:hover{background:rgba(58,55,50,.06)}
+  .mode-btn.active{background:var(--accent-wash); border-color:var(--accent); color:var(--accent)}
+  .icon-btn{appearance:none; width:31px; height:31px; display:grid; place-items:center; padding:0; color:rgba(58,55,50,.78);
+    background:transparent; border:1.5px solid rgba(58,55,50,.5); border-radius:48% 52% 45% 55% / 54% 45% 55% 46%; cursor:pointer}
+  .icon-btn:hover{background:rgba(58,55,50,.07)}
+  .icon-btn:disabled{opacity:.35; cursor:default}
+  .icon-btn svg{width:17px; height:17px; display:block; overflow:visible}
+
+  /* ---------- board + rail ---------- */
+  .play{position:relative; z-index:3; display:grid; grid-template-columns:minmax(0,1fr) 208px; gap:22px; align-items:start}
+  .board-wrap{position:relative; width:min(100%,calc(100vh - 316px)); aspect-ratio:1/1; margin:0 auto;
+    border-radius:5px; box-shadow:0 0 0 2.5px var(--turn), 0 10px 26px rgba(0,0,0,.20), 0 0 0 7px rgba(255,255,255,.16);
+    transition:box-shadow .22s ease}
+  #board{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:manipulation; cursor:pointer; border-radius:4px}
+  .die-pad{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:6; display:grid; place-items:center;
+    padding:0; border:1.6px solid rgba(58,55,50,.8); border-radius:15px 7px 13px 8px / 8px 13px 7px 15px;
+    background:var(--paper-hi); box-shadow:0 3px 0 rgba(58,55,50,.13), 0 0 0 5px var(--turn-wash);
+    cursor:pointer; transition:box-shadow .18s ease, transform .18s ease}
+  .die-pad:hover:not(:disabled){transform:translate(-50%,-50%) rotate(-1.5deg) scale(1.03)}
+  .die-pad:disabled{cursor:default; opacity:.9}
+  .die-pad.can-roll{box-shadow:0 3px 0 rgba(58,55,50,.13), 0 0 0 5px var(--turn-ring), 0 0 0 9px var(--turn-wash); animation:die-pulse 1.9s ease-in-out infinite}
+  @keyframes die-pulse{0%,100%{box-shadow:0 3px 0 rgba(58,55,50,.13),0 0 0 5px var(--turn-ring),0 0 0 9px var(--turn-wash)} 50%{box-shadow:0 3px 0 rgba(58,55,50,.13),0 0 0 8px var(--turn-ring),0 0 0 13px var(--turn-wash)}}
+  .die-pad.rolling{animation:die-tumble .42s cubic-bezier(.3,1.4,.5,1)}
+  @keyframes die-tumble{0%{transform:translate(-50%,-50%) rotate(0) scale(1)} 35%{transform:translate(-50%,-56%) rotate(-13deg) scale(.9)} 70%{transform:translate(-50%,-49%) rotate(9deg) scale(1.04)} 100%{transform:translate(-50%,-50%) rotate(0) scale(1)}}
+  #die{display:block}
+  .overlay{position:absolute; inset:0; z-index:20; display:grid; place-items:center; padding:12px;
+    background:rgba(251,244,226,.74); opacity:0; pointer-events:none; transition:opacity .18s ease; border-radius:4px}
+  .overlay.show{opacity:1; pointer-events:auto}
+  .card{position:relative; width:min(100%,330px); padding:18px 20px 15px; text-align:center; background:var(--paper-hi);
+    border:1.6px solid var(--ink); border-radius:24px 9px 20px 11px / 11px 20px 9px 24px;
+    box-shadow:3px 4px 0 rgba(58,55,50,.09); transform:rotate(-.9deg)}
+  .card::before{content:""; position:absolute; inset:3px; border:1px solid rgba(58,55,50,.24);
+    border-radius:21px 8px 17px 9px / 9px 17px 8px 21px; transform:rotate(.4deg); pointer-events:none}
+  .card-title{margin:0 0 5px; font-weight:400; font-size:clamp(29px,5.2vw,38px); line-height:1; transform:rotate(-1.2deg); filter:url(#pencil-edge)}
+  .card-copy{margin:7px 0 0; font-size:13px; line-height:1.5; color:rgba(58,55,50,.72)}
+  .card-actions{display:flex; justify-content:center; gap:9px; margin-top:14px; flex-wrap:wrap}
+  .sketch-btn{appearance:none; font-family:var(--hand); font-size:12.5px; padding:6px 13px 7px; color:var(--ink);
+    background:rgba(255,255,255,.35); border:1.4px solid rgba(58,55,50,.65);
+    border-radius:12px 5px 10px 6px / 6px 10px 5px 12px; cursor:pointer}
+  .sketch-btn:hover{background:rgba(58,55,50,.07)}
+  .sketch-btn.primary{background:rgba(58,55,50,.08)}
+  .sketch-btn.primary{background:rgba(58,55,50,.08)}
+
+  .rail{position:relative; padding-top:2px}
+  .rail-title{margin:0 0 7px; font-family:var(--type); font-size:9.5px; letter-spacing:.22em; text-transform:uppercase;
+    color:rgba(58,55,50,.5); font-weight:400}
+  .rail-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+  .rail-row{display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px;
+    padding:7px 9px 8px; border:1px solid rgba(58,55,50,.16); border-radius:11px 4px 10px 5px / 5px 10px 4px 11px;
+    background:rgba(255,255,255,.16); transition:background .16s ease, border-color .16s ease}
+  .rail-row.current{background:var(--turn-wash); border-color:var(--turn); box-shadow:inset 3px 0 0 var(--turn)}
+  .rail-row.out{opacity:.55}
+  .rail-dot{width:11px; height:11px; border-radius:50%; border:1.4px solid rgba(58,55,50,.72); box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.4)}
+  .rail-name{font-size:13px; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .rail-tag{display:block; font-family:var(--type); font-size:8.5px; letter-spacing:.14em; text-transform:uppercase; color:rgba(58,55,50,.5)}
+  .rail-meta{font-family:var(--type); font-size:9.5px; letter-spacing:.06em; color:rgba(58,55,50,.55); text-align:right; white-space:nowrap}
+
+  /* ---------- controls ---------- */
+  .controls{position:relative; z-index:3; display:flex; align-items:center; gap:16px; margin-top:12px; padding-top:10px; flex-wrap:wrap}
+  .controls::before{content:""; position:absolute; top:0; left:0; right:0; height:1px; background:rgba(58,55,50,.16); transform:rotate(-.15deg)}
+  .message{margin:0; font-size:16px; line-height:1.3; color:rgba(58,55,50,.86); flex:1; min-width:160px}
+  .message b{font-weight:400; color:var(--ink)}
+  .roll-btn{appearance:none; flex:none; height:46px; min-width:126px; padding:0 20px; font-family:var(--hand); font-size:17px;
+    color:var(--ink); background:var(--turn-wash); border:1.6px solid rgba(58,55,50,.62);
+    border-radius:15px 5px 13px 6px / 6px 13px 5px 15px; cursor:pointer}
+  .roll-btn:hover{background:rgba(58,55,50,.12)}
+  .roll-btn:disabled{opacity:.42; cursor:default}
+  .roll-btn:focus-visible,.mode-btn:focus-visible,.icon-btn:focus-visible,.sketch-btn:focus-visible,.die-pad:focus-visible{outline:2px solid var(--red); outline-offset:3px}
+  .footnote{position:relative; z-index:3; display:flex; justify-content:space-between; align-items:flex-end; gap:14px; flex-basis:100%;
+    margin-top:10px; font-size:11.5px; line-height:1.45; color:rgba(58,55,50,.62)}
+  .footnote .hint{max-width:84%}
+  .footnote .page{flex:none; font-family:var(--type); font-size:10px; letter-spacing:.16em; color:rgba(58,55,50,.45)}
+
+  @media (max-height:900px) and (min-width:701px){
+    .paper{padding-top:16px; padding-bottom:12px}
+    .title{font-size:clamp(38px,4.4vw,56px)}
+    .meta{font-size:10px; line-height:1.6}
+    .rule{margin:5px 0 2px}
+    .hud{margin-bottom:8px; min-height:40px}
+    .controls{margin-top:8px; padding-top:8px}
+    .footnote{margin-top:7px}
+    .board-wrap{width:min(100%,calc(100vh - 270px))}
+  }
+  @media (max-width:900px){
+    .play{grid-template-columns:1fr; gap:10px}
+    .board-wrap{width:min(100%,calc(100vh - 300px))}
+    .rail{padding-top:0}
+    .rail-list{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+    .rail-title{margin-bottom:5px}
+  }
+  @media (max-width:700px){
+    body{padding:8px}
+    .paper{padding:16px 14px 12px 24px}
+    .paper::before{left:12px}
+    .stain{width:100px; height:96px; top:-16px; right:10px}
+    .board-wrap{width:min(100%,calc(100vh - 280px))}
+    .turn-text{font-size:17px}
+    .turn-banner .label{display:none}
+    .mode-btn{padding:0 8px; font-size:11.5px}
+    .controls{gap:10px}
+    .roll-btn{height:42px; min-width:104px; font-size:15px}
+  }
+  @media (max-width:430px){
+    .paper{padding:12px 9px 10px 20px}
+    .title{font-size:40px}
+    .subtitle{font-size:11px}
+    .meta{display:none}
+    .turn-text{font-size:15px}
+    .turn-text .hint{font-size:11.5px; margin-left:5px}
+    .hud{gap:6px; flex-wrap:nowrap}
+    .hud-right{gap:5px}
+    .icon-btn{width:29px; height:29px}
+    .mode-btn{height:29px}
+    .you-pill{display:none!important}
+    .board-wrap{width:min(100%,calc(100vh - 300px))}
+    .rail-list{grid-template-columns:1fr 1fr; gap:5px}
+    .rail-row{padding:5px 7px 6px}
+    .rail-name{font-size:12px}
+    .message{font-size:13.5px}
+    .roll-btn{height:40px; min-width:92px; font-size:14px}
+    .footnote{font-size:10px}
+  }
+  @media (prefers-reduced-motion:reduce){.paper{animation:none}.overlay{transition:none}.die-pad,.die-pad.can-roll{animation:none}}
+</style>
+<link rel="stylesheet" href="../../assets/room.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="pencil-edge" x="-8%" y="-15%" width="116%" height="135%">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale=".9" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<main class="paper">
+  <div class="stain" aria-hidden="true"></div>
+  <header>
+    <div>
+      <h1 class="title" aria-label="ludo">
+        <span style="--r:-4deg;--y:2px">l</span><span style="--r:2deg;--y:-1px">u</span><span style="--r:-2deg;--y:1px">d</span><span style="--r:3deg;--y:-2px">o</span>
+      </h1>
+      <p class="subtitle">four pencils, one page</p>
+    </div>
+    <div class="meta" aria-hidden="true">
+      <b>nov 3, 2026</b>
+      <b>tuesday afternoon</b>
+      <span class="no">no. 09</span>
+    </div>
+  </header>
+
+  <svg class="rule" viewBox="0 0 600 7" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 3 C 60 2, 118 4.4, 180 3.1 S 300 1.6, 366 3.4 S 500 4.6, 600 2.7" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".34" stroke-linecap="round"/>
+    <path d="M0 4.4 C 80 3.4, 150 5, 228 3.9 S 388 2.6, 466 4.2 S 552 3.1, 600 3.8" fill="none" stroke="currentColor" stroke-width=".65" opacity=".18" stroke-linecap="round"/>
+  </svg>
+
+  <div class="game-col">
+    <div class="hud">
+      <div class="turn-banner" id="turnBanner">
+        <span class="label">turn</span>
+        <span class="turn-chip" id="turnChip" aria-hidden="true"></span>
+        <span class="turn-text"><span id="status" aria-live="polite">red</span><span class="hint" id="turnHint">to roll</span></span>
+      </div>
+      <div class="hud-right">
+        <span class="you-pill" id="youPill"><i></i><span id="youText">you are red</span></span>
+        <button class="mode-btn room-btn" id="roomBtn" type="button" title="Play with friends">invite</button>
+        <button class="icon-btn" id="newGame" type="button" aria-label="Start a new game" title="New game">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 4.5h9.5L19 8v11.5H6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M15 4.7V8h3.2M9 12h6.5M9 15.5h4.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="play">
+      <div class="board-wrap" id="boardWrap">
+        <canvas id="board" width="720" height="720" aria-label="Ludo board"></canvas>
+        <button class="die-pad" id="diePad" type="button" aria-label="Roll the die" title="Roll the die">
+          <canvas id="die" width="58" height="58" aria-hidden="true"></canvas>
+        </button>
+        <div class="overlay" id="overlay" aria-live="polite"></div>
+      </div>
+      <aside class="rail" aria-label="Players">
+        <h2 class="rail-title">pencils</h2>
+        <ol class="rail-list" id="rail"></ol>
+      </aside>
+    </div>
+
+    <div class="controls">
+      <p class="message" id="message">red to roll</p>
+      <button class="roll-btn" id="rollBtn" type="button">roll</button>
+    </div>
+
+    <footer class="footnote">
+      <span class="hint">roll a six to leave the base. land on a rival to send them home.</span>
+      <span class="page">page 9</span>
+    </footer>
+  </div>
+</main>
+
+<script src="../../assets/room.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  const TRACK = [
+    [6,13],[6,12],[6,11],[6,10],[6,9],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8],
+    [0,7],[0,6],[1,6],[2,6],[3,6],[4,6],[5,6],[6,5],[6,4],[6,3],[6,2],[6,1],[6,0],
+    [7,0],[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[9,6],[10,6],[11,6],[12,6],[13,6],[14,6],
+    [14,7],[14,8],[13,8],[12,8],[11,8],[10,8],[9,8],[8,9],[8,10],[8,11],[8,12],[8,13],[8,14],
+    [7,14],[6,14]
+  ];
+  const SAFE = [0, 8, 13, 21, 26, 34, 39, 47];
+  const COLORS = [
+    {name:'red',    hex:'#bf5a4e', soft:'rgba(191,90,78,.16)',  start:0,  base:{x:0,y:9}, lane:[[7,13],[7,12],[7,11],[7,10],[7,9]], dir:[0,1],  travel:[0,-1]},
+    {name:'green',  hex:'#6f8f5f', soft:'rgba(111,143,95,.17)', start:13, base:{x:0,y:0}, lane:[[1,7],[2,7],[3,7],[4,7],[5,7]], dir:[-1,0], travel:[1,0]},
+    {name:'yellow', hex:'#c99a2c', soft:'rgba(201,154,44,.18)', start:26, base:{x:9,y:0}, lane:[[7,1],[7,2],[7,3],[7,4],[7,5]], dir:[0,-1], travel:[0,1]},
+    {name:'blue',   hex:'#5f7f9f', soft:'rgba(95,127,159,.17)', start:39, base:{x:9,y:9}, lane:[[13,7],[12,7],[11,7],[10,7],[9,7]], dir:[1,0],  travel:[-1,0]}
+  ];
+
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const dieCanvas = document.getElementById('die');
+  const dieCtx = dieCanvas.getContext('2d');
+  const diePad = document.getElementById('diePad');
+  const boardWrap = document.getElementById('boardWrap');
+  const statusEl = document.getElementById('status');
+  const turnHintEl = document.getElementById('turnHint');
+  const turnBanner = document.getElementById('turnBanner');
+  const turnChip = document.getElementById('turnChip');
+  const messageEl = document.getElementById('message');
+  const railEl = document.getElementById('rail');
+  const youPill = document.getElementById('youPill');
+  const youText = document.getElementById('youText');
+  const rollBtn = document.getElementById('rollBtn');
+  const newBtn = document.getElementById('newGame');
+  const overlay = document.getElementById('overlay');
+
+  let W = 0, H = 0, cell = 40, pad = 10, dpr = 1, bg = null;
+  let state = null;
+  let mySeat = null;
+  let roomMode = false;
+  let roomStarted = false;
+  let pending = false;
+  let anim = null;
+  let winnerShown = false;
+  let gameGen = 0;
+
+  function steady(i){
+    const s = Math.sin(i * 78.233 + 12.345) * 43758.5453123;
+    return (s - Math.floor(s)) * 2 - 1;
+  }
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function rgba(hex, a){
+    const h = hex.replace('#','');
+    const n = parseInt(h.length === 3 ? h.split('').map(function(c){return c+c;}).join('') : h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function colorName(i){ return COLORS[i].name; }
+
+  function who(i){
+    const p = state && state.players[i];
+    if (!p) return colorName(i);
+    const n = String(p.name || '').trim();
+    if (!n || n.toLowerCase() === colorName(i)) return colorName(i);
+    return n + ' (' + colorName(i) + ')';
+  }
+
+  function initialState(players){
+    return {
+      players: players.map(function(p, i){
+        return {name: p.name || COLORS[i].name, color: i, tokens: [-1,-1,-1,-1], online: p.online !== false};
+      }),
+      turn: 0, die: null, rolled: false, winner: null, started: true,
+      message: who0(players[0], 0) + ' to roll'
+    };
+    function who0(p, i){
+      const n = String((p && p.name) || '').trim();
+      if (!n || n.toLowerCase() === COLORS[i].name) return COLORS[i].name;
+      return n + ' (' + COLORS[i].name + ')';
+    }
+  }
+
+  function waitingState(players){
+    const ps = [0,1,2,3].map(function(i){
+      const p = (players || []).find(function(x){ return x.seat === i; });
+      return {name: p ? p.name : COLORS[i].name, color: i, tokens: [-1,-1,-1,-1], online: p ? p.online !== false : false};
+    });
+    return {players: ps, turn: 0, die: null, rolled: false, winner: null, started: false, message: 'waiting for players'};
+  }
+
+  function baseSlot(p, t){
+    const b = COLORS[p].base;
+    const dx = [1.5, 4.5, 1.5, 4.5][t];
+    const dy = [1.5, 1.5, 4.5, 4.5][t];
+    return {x: b.x + dx, y: b.y + dy};
+  }
+
+  /* finished pencils rest at the outer edge of their home triangle, clear of the central die. */
+  function homePoint(p, t, count, idx){
+    const c = COLORS[p];
+    const cx = 7.5, cy = 7.5, r = 1.26;
+    const perp = [-0.6, -0.2, 0.2, 0.6][idx] || 0;
+    return {
+      x: cx + c.dir[0] * r + (c.dir[1] !== 0 ? perp : 0),
+      y: cy + c.dir[1] * r + (c.dir[0] !== 0 ? perp : 0)
+    };
+  }
+
+  function tokenPoint(p, t){
+    const prog = state.players[p].tokens[t];
+    const c = COLORS[p];
+    let pt;
+    if (prog === -1) pt = baseSlot(p, t);
+    else if (prog < 51){
+      const q = TRACK[(c.start + prog) % 52];
+      pt = {x: q[0] + 0.5, y: q[1] + 0.5};
+    } else if (prog < 56){
+      const q = c.lane[prog - 51];
+      pt = {x: q[0] + 0.5, y: q[1] + 0.5};
+    } else {
+      const homeTokens = [];
+      for (let i = 0; i < 4; i++) if (state.players[p].tokens[i] === 56) homeTokens.push(i);
+      pt = homePoint(p, t, homeTokens.length, homeTokens.indexOf(t));
+    }
+    if (prog >= 0 && prog < 56){
+      const same = [];
+      for (let i = 0; i < 4; i++) if (state.players[p].tokens[i] === prog) same.push(i);
+      if (same.length > 1){
+        const idx = same.indexOf(t);
+        const off = (idx - (same.length - 1) / 2) * 0.17;
+        pt.x += off;
+        pt.y += off;
+      }
+    }
+    return pt;
+  }
+
+  function toScreen(pt){
+    return {x: pad + pt.x * cell, y: pad + pt.y * cell};
+  }
+
+  function tokenPosition(p, t){
+    return toScreen(tokenPoint(p, t));
+  }
+
+  function legalMovesForCurrent(){
+    if (!state || state.winner != null || !state.rolled || state.die == null) return [];
+    const p = state.turn;
+    const out = [];
+    for (let t = 0; t < 4; t++){
+      const prog = state.players[p].tokens[t];
+      if (prog === -1){
+        if (state.die === 6) out.push(t);
+      } else if (prog < 56 && prog + state.die <= 56){
+        out.push(t);
+      }
+    }
+    return out;
+  }
+
+  function isMyTurn(){
+    return !roomMode || mySeat === state.turn;
+  }
+
+  function canAct(){
+    return !!state && state.started && state.winner == null && !state.rolled && isMyTurn() && !pending;
+  }
+
+  function aliveSeats(){
+    if (!state) return [];
+    const out = [];
+    for (let i = 0; i < 4; i++) if (state.players[i] && state.players[i].online !== false) out.push(i);
+    return out;
+  }
+
+  /* empty or disconnected seats are skipped instead of stalling the table. */
+  function nextAliveSeat(from){
+    const alive = aliveSeats();
+    if (!alive.length) return from;
+    if (alive.length === 1) return alive[0];
+    let i = from;
+    for (let k = 0; k < 4; k++){
+      i = (i + 1) % 4;
+      if (state.players[i] && state.players[i].online !== false) return i;
+    }
+    return from;
+  }
+
+  function publishIfHost(){
+    if (roomMode && window.PaperRoom && PaperRoom.role === 'host') PaperRoom.publish();
+  }
+
+  function doRoll(){
+    if (!state || !state.started || state.winner != null || state.rolled) return false;
+    state.die = 1 + Math.floor(Math.random() * 6);
+    state.rolled = true;
+    state.message = who(state.turn) + ' rolled ' + state.die;
+    const moves = legalMovesForCurrent();
+    const turnAtRoll = state.turn;
+    const gen = gameGen;
+    if (!moves.length){
+      state.message += ' — no move';
+      setTimeout(function(){
+        if (gen === gameGen && state && state.rolled && state.turn === turnAtRoll && state.die != null) endTurn();
+      }, 900);
+    } else if (moves.length === 1){
+      setTimeout(function(){
+        if (gen === gameGen && state && state.rolled && state.turn === turnAtRoll) doMove(moves[0]);
+      }, 560);
+    }
+    shakeDie();
+    updateUI();
+    render(performance.now());
+    return true;
+  }
+
+  function endTurn(){
+    if (!state || state.winner != null) return;
+    state.rolled = false;
+    state.turn = nextAliveSeat(state.turn);
+    const next = state.players[state.turn];
+    state.message = who(state.turn) + ' to roll';
+    if (next.online === false) state.message = who(state.turn) + ' is away';
+    publishIfHost();
+    updateUI();
+    render(performance.now());
+  }
+
+  function doMove(t, noPublish){
+    if (!state || !state.rolled || state.die == null || state.winner != null) return false;
+    const moves = legalMovesForCurrent();
+    if (moves.indexOf(t) === -1) return false;
+
+    const p = state.turn;
+    const from = tokenPosition(p, t);
+    const old = state.players[p].tokens[t];
+    const to = old === -1 ? 0 : old + state.die;
+    let captured = 0;
+
+    if (to < 51){
+      const trackIndex = (COLORS[p].start + to) % 52;
+      if (SAFE.indexOf(trackIndex) === -1){
+        for (let q = 0; q < 4; q++){
+          if (q === p) continue;
+          for (let u = 0; u < 4; u++){
+            const op = state.players[q].tokens[u];
+            if (op >= 0 && op < 52 && (COLORS[q].start + op) % 52 === trackIndex){
+              state.players[q].tokens[u] = -1;
+              captured++;
+            }
+          }
+        }
+      }
+    }
+
+    state.players[p].tokens[t] = to;
+    const dest = tokenPosition(p, t);
+    anim = {player: p, token: t, from: from, to: dest, start: performance.now(), dur: 280};
+    const rolled = state.die;
+    state.rolled = false;
+
+    if (state.players[p].tokens.every(function(v){ return v === 56; })){
+      state.winner = p;
+      state.started = false;
+      state.message = who(p) + ' wins!';
+      winnerShown = false;
+      setTimeout(showWinner, 450);
+    } else if (rolled === 6){
+      state.message = who(p) + ' rolled a six — roll again';
+    } else {
+      state.turn = nextAliveSeat(p);
+      state.message = who(state.turn) + ' to roll';
+      if (state.players[state.turn].online === false){
+        state.message = who(state.turn) + ' is away';
+      }
+    }
+    if (captured){
+      state.message += ' · sent ' + captured + ' home';
+    }
+
+    if (!noPublish) publishIfHost();
+    updateUI();
+    render(performance.now());
+    return true;
+  }
+
+  function roll(){
+    if (roomMode && window.PaperRoom && PaperRoom.role === 'host' && state && state.started && state.winner == null && state.players[state.turn].online === false){
+      endTurn();
+      return;
+    }
+    if (!canAct()) return;
+    if (roomMode && window.PaperRoom && PaperRoom.role === 'guest'){
+      pending = true;
+      PaperRoom.sendAction({type: 'rollRequest'});
+      updateUI();
+      setTimeout(function(){ if (pending){ pending = false; updateUI(); } }, 3200);
+      return;
+    }
+    doRoll();
+    publishIfHost();
+  }
+
+  function requestMove(t){
+    if (!state || !state.rolled || state.winner != null) return;
+    if (legalMovesForCurrent().indexOf(t) === -1) return;
+    if (roomMode && window.PaperRoom && PaperRoom.role === 'guest'){
+      pending = true;
+      PaperRoom.sendAction({type: 'move', token: t});
+      updateUI();
+      setTimeout(function(){ if (pending){ pending = false; updateUI(); } }, 3200);
+      return;
+    }
+    doMove(t);
+  }
+
+  function startLocal(){
+    gameGen++;
+    roomMode = false;
+    roomStarted = false;
+    mySeat = null;
+    pending = false;
+    anim = null;
+    winnerShown = false;
+    state = initialState([{name:'red'},{name:'green'},{name:'yellow'},{name:'blue'}]);
+    state.started = true;
+    state.message = 'red to roll';
+    overlay.classList.remove('show');
+    overlay.innerHTML = '';
+    updateUI();
+    render(performance.now());
+  }
+
+  function startOnline(players){
+    gameGen++;
+    roomStarted = true;
+    pending = false;
+    anim = null;
+    winnerShown = false;
+    const ps = [0,1,2,3].map(function(i){
+      const p = players.find(function(x){ return x.seat === i; });
+      return {name: p ? p.name : COLORS[i].name, online: p ? p.online !== false : false};
+    });
+    state = initialState(ps);
+    state.started = true;
+    state.turn = 0;
+    state.message = who(0) + ' to roll';
+    overlay.classList.remove('show');
+    overlay.innerHTML = '';
+    updateUI();
+    render(performance.now());
+  }
+
+  function newGame(){
+    if (roomMode && window.PaperRoom){
+      PaperRoom.leave();
+      return;
+    }
+    startLocal();
+  }
+
+  function resize(){
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 20) return;
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = rect.width;
+    H = rect.height;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pad = Math.max(6, W * 0.018);
+    cell = (W - pad * 2) / 15;
+    buildBG();
+    layoutDie();
+    render(performance.now());
+  }
+
+  function layoutDie(){
+    const padSize = Math.round(cell * 1.86);
+    const dieSize = Math.round(cell * 1.32);
+    diePad.style.width = padSize + 'px';
+    diePad.style.height = padSize + 'px';
+    dieCanvas.style.width = dieSize + 'px';
+    dieCanvas.style.height = dieSize + 'px';
+    drawDie(state ? state.die : null, dieSize);
+  }
+
+  /* ---------- board drawing ---------- */
+
+  function cellRect(x, y, inset){
+    const sx = pad + x * cell;
+    const sy = pad + y * cell;
+    const i = inset == null ? 0.8 : inset;
+    return {x: sx + i, y: sy + i, w: cell - i * 2, h: cell - i * 2};
+  }
+
+  function fillCell(g, x, y, fill, stroke){
+    const r = cellRect(x, y, 0.7);
+    g.fillStyle = fill;
+    g.fillRect(r.x, r.y, r.w, r.h);
+    if (stroke !== false){
+      g.strokeStyle = 'rgba(58,55,50,.40)';
+      g.lineWidth = 1;
+      g.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+  }
+
+  function drawStar(g, cx, cy, r, color, fill){
+    g.beginPath();
+    for (let i = 0; i < 8; i++){
+      const a = -Math.PI / 2 + i * Math.PI / 4;
+      const rr = i % 2 ? r * 0.42 : r;
+      const px = cx + Math.cos(a) * rr;
+      const py = cy + Math.sin(a) * rr;
+      if (i) g.lineTo(px, py); else g.moveTo(px, py);
+    }
+    g.closePath();
+    if (fill){ g.fillStyle = fill; g.fill(); }
+    g.strokeStyle = color;
+    g.lineWidth = 1.1;
+    g.stroke();
+  }
+
+  function arrow(g, cx, cy, dir, size, color){
+    g.save();
+    g.translate(cx, cy);
+    g.rotate(Math.atan2(dir[1], dir[0]));
+    g.beginPath();
+    g.moveTo(size * 0.55, 0);
+    g.lineTo(-size * 0.35, -size * 0.5);
+    g.lineTo(-size * 0.35, size * 0.5);
+    g.closePath();
+    g.fillStyle = color;
+    g.fill();
+    g.restore();
+  }
+
+  function roundRect(g, x, y, w, h, r){
+    g.beginPath();
+    if (g.roundRect) g.roundRect(x, y, w, h, r);
+    else g.rect(x, y, w, h);
+  }
+
+  function buildBG(){
+    if (!W) return;
+    bg = document.createElement('canvas');
+    bg.width = Math.round(W * dpr);
+    bg.height = Math.round(H * dpr);
+    const g = bg.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = 'rgba(251,244,226,.86)';
+    g.fillRect(0, 0, W, H);
+
+    // bases
+    COLORS.forEach(function(c, p){
+      const sx = pad + c.base.x * cell;
+      const sy = pad + c.base.y * cell;
+      const s = cell * 6;
+      roundRect(g, sx + 1, sy + 1, s - 2, s - 2, cell * 0.42);
+      g.fillStyle = c.soft;
+      g.fill();
+      g.strokeStyle = 'rgba(58,55,50,.62)';
+      g.lineWidth = 1.8;
+      g.stroke();
+
+      const inner = cell * 0.75;
+      roundRect(g, sx + inner, sy + inner, s - inner * 2, s - inner * 2, cell * 0.28);
+      g.fillStyle = 'rgba(253,248,234,.82)';
+      g.fill();
+      g.strokeStyle = 'rgba(58,55,50,.28)';
+      g.lineWidth = 1;
+      g.stroke();
+
+      for (let t = 0; t < 4; t++){
+        const pt = toScreen(baseSlot(p, t));
+        g.beginPath();
+        g.arc(pt.x, pt.y, cell * 0.34, 0, Math.PI * 2);
+        g.fillStyle = 'rgba(255,255,255,.28)';
+        g.fill();
+        g.strokeStyle = 'rgba(58,55,50,.26)';
+        g.lineWidth = 1;
+        g.setLineDash([2.5, 3.5]);
+        g.stroke();
+        g.setLineDash([]);
+      }
+    });
+
+    // track
+    TRACK.forEach(function(q, i){
+      const owner = COLORS.find(function(c){ return c.start === i; });
+      fillCell(g, q[0], q[1], owner ? rgba(owner.hex, .42) : 'rgba(253,248,234,.94)');
+      const cx = pad + (q[0] + 0.5) * cell;
+      const cy = pad + (q[1] + 0.5) * cell;
+      if (owner){
+        arrow(g, cx, cy, owner.travel, cell * 0.44, 'rgba(58,55,50,.58)');
+      } else if (SAFE.indexOf(i) !== -1){
+        drawStar(g, cx, cy, cell * 0.24, 'rgba(58,55,50,.45)', 'rgba(255,255,255,.5)');
+      }
+    });
+
+    // home lanes, chevrons pointing the way home
+    COLORS.forEach(function(c){
+      c.lane.forEach(function(q, i){
+        fillCell(g, q[0], q[1], rgba(c.hex, .34));
+        if (i < 4){
+          const cx = pad + (q[0] + 0.5) * cell;
+          const cy = pad + (q[1] + 0.5) * cell;
+          g.save();
+          g.translate(cx, cy);
+          g.rotate(Math.atan2(c.travel[1], c.travel[0]));
+          g.beginPath();
+          g.moveTo(cell * 0.1, 0);
+          g.lineTo(-cell * 0.1, -cell * 0.15);
+          g.lineTo(-cell * 0.1, cell * 0.15);
+          g.closePath();
+          g.fillStyle = rgba(c.hex, .75);
+          g.fill();
+          g.restore();
+        }
+      });
+    });
+
+    // centre home triangles
+    const x0 = pad + 6 * cell;
+    const y0 = pad + 6 * cell;
+    const s = cell * 3;
+    const cx = x0 + s / 2;
+    const cy = y0 + s / 2;
+    function tri(a, b, cc, fill){
+      g.beginPath();
+      g.moveTo(a[0], a[1]);
+      g.lineTo(b[0], b[1]);
+      g.lineTo(cc[0], cc[1]);
+      g.closePath();
+      g.fillStyle = fill;
+      g.fill();
+      g.strokeStyle = 'rgba(58,55,50,.34)';
+      g.lineWidth = 1.1;
+      g.stroke();
+    }
+    tri([x0, y0], [x0 + s, y0], [cx, cy], rgba(COLORS[2].hex, .30));
+    tri([x0 + s, y0], [x0 + s, y0 + s], [cx, cy], rgba(COLORS[3].hex, .30));
+    tri([x0 + s, y0 + s], [x0, y0 + s], [cx, cy], rgba(COLORS[0].hex, .30));
+    tri([x0, y0 + s], [x0, y0], [cx, cy], rgba(COLORS[1].hex, .30));
+    g.strokeStyle = 'rgba(58,55,50,.45)';
+    g.lineWidth = 1.2;
+    g.strokeRect(x0, y0, s, s);
+    g.beginPath();
+    g.moveTo(x0, y0); g.lineTo(x0 + s, y0 + s);
+    g.moveTo(x0 + s, y0); g.lineTo(x0, y0 + s);
+    g.stroke();
+    // four parking spots per home, so a lone pencil still reads as "home"
+    COLORS.forEach(function(c, p){
+      for (let i = 0; i < 4; i++){
+        const pt = homePoint(p, 0, 4, i);
+        const sp = toScreen(pt);
+        g.beginPath();
+        g.arc(sp.x, sp.y, cell * 0.21, 0, Math.PI * 2);
+        g.strokeStyle = rgba(c.hex, .38);
+        g.lineWidth = 1;
+        g.setLineDash([2, 3]);
+        g.stroke();
+        g.setLineDash([]);
+      }
+    });
+
+    // outer frame
+    g.strokeStyle = 'rgba(58,55,50,.7)';
+    g.lineWidth = 1.8;
+    g.beginPath();
+    g.moveTo(pad + 0.6, pad + 0.6);
+    g.lineTo(pad + cell * 15 - 0.6, pad + 0.6);
+    g.lineTo(pad + cell * 15 - 0.6, pad + cell * 15 - 0.6);
+    g.lineTo(pad + 0.6, pad + cell * 15 - 0.6);
+    g.closePath();
+    g.stroke();
+  }
+
+  function drawToken(pos, p, t, moving, home){
+    const r = cell * (home ? 0.2 : 0.33);
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.fillStyle = 'rgba(58,55,50,.20)';
+    ctx.beginPath();
+    ctx.arc(1.5, 2.2, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COLORS[p].hex;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2f2c28';
+    ctx.lineWidth = Math.max(1.1, cell * 0.04);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.30)';
+    ctx.beginPath();
+    ctx.arc(-r * 0.32, -r * 0.36, r * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    if (!home){
+      ctx.fillStyle = 'rgba(255,255,255,.96)';
+      ctx.font = '600 ' + Math.max(8, cell * 0.2) + 'px "Bradley Hand","Chalkboard SE",cursive';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(t + 1), 0, cell * 0.015);
+    }
+    ctx.restore();
+  }
+
+  function drawTokens(now){
+    for (let p = 0; p < 4; p++){
+      for (let t = 0; t < 4; t++){
+        let pos;
+        let moving = false;
+        if (anim && anim.player === p && anim.token === t){
+          const k = (now - anim.start) / anim.dur;
+          if (k < 1){
+            moving = true;
+            const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+            pos = {x: anim.from.x + (anim.to.x - anim.from.x) * e, y: anim.from.y + (anim.to.y - anim.from.y) * e};
+          } else {
+            pos = tokenPosition(p, t);
+          }
+        } else {
+          pos = tokenPosition(p, t);
+        }
+        drawToken(pos, p, t, moving, state.players[p].tokens[t] === 56);
+      }
+    }
+    if (anim && now > anim.start + anim.dur) anim = null;
+  }
+
+  function drawMoveRing(pos, hex, now){
+    const pulse = 0.5 + 0.5 * Math.sin(now / 240);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(253,248,234,.85)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, cell * 0.47, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = hex;
+    ctx.globalAlpha = 0.55 + pulse * 0.45;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, cell * 0.47, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function drawActiveBase(now){
+    if (!state) return;
+    const p = state.turn;
+    const c = COLORS[p];
+    const sx = pad + c.base.x * cell;
+    const sy = pad + c.base.y * cell;
+    const s = cell * 6;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 620);
+    ctx.save();
+    roundRect(ctx, sx + 3, sy + 3, s - 6, s - 6, cell * 0.38);
+    ctx.strokeStyle = rgba(c.hex, 0.45 + pulse * 0.4);
+    ctx.lineWidth = 2.6;
+    ctx.setLineDash([cell * 0.28, cell * 0.2]);
+    ctx.lineDashOffset = -(now / 90) % (cell * 0.48);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function render(now){
+    if (!W) return;
+    ctx.clearRect(0, 0, W, H);
+    if (bg) ctx.drawImage(bg, 0, 0, W, H);
+    if (!state) return;
+    drawActiveBase(now);
+    if (state.rolled && state.winner == null && isMyTurn()){
+      const moves = legalMovesForCurrent();
+      for (let i = 0; i < moves.length; i++){
+        drawMoveRing(tokenPosition(state.turn, moves[i]), COLORS[state.turn].hex, now);
+      }
+    }
+    drawTokens(now);
+  }
+
+  function drawDie(value, sizePx){
+    const size = sizePx || parseFloat(dieCanvas.style.width) || 58;
+    const d = Math.min(2, window.devicePixelRatio || 1);
+    dieCanvas.width = Math.round(size * d);
+    dieCanvas.height = Math.round(size * d);
+    dieCtx.setTransform(d, 0, 0, d, 0, 0);
+    dieCtx.clearRect(0, 0, size, size);
+    const k = size / 58;
+    dieCtx.save();
+    dieCtx.translate(size / 2, size / 2);
+    dieCtx.scale(k, k);
+    dieCtx.rotate(-0.03);
+    dieCtx.fillStyle = '#fdf8ea';
+    dieCtx.strokeStyle = '#3a3733';
+    dieCtx.lineWidth = 1.6 / k;
+    dieCtx.beginPath();
+    if (dieCtx.roundRect) dieCtx.roundRect(-23, -23, 46, 46, 7);
+    else dieCtx.rect(-23, -23, 46, 46);
+    dieCtx.fill();
+    dieCtx.stroke();
+    const pips = {
+      1: [[0,0]],
+      2: [[-9.5,-9.5],[9.5,9.5]],
+      3: [[-9.5,-9.5],[0,0],[9.5,9.5]],
+      4: [[-9.5,-9.5],[9.5,-9.5],[-9.5,9.5],[9.5,9.5]],
+      5: [[-9.5,-9.5],[9.5,-9.5],[0,0],[-9.5,9.5],[9.5,9.5]],
+      6: [[-9.5,-12],[9.5,-12],[-9.5,0],[9.5,0],[-9.5,12],[9.5,12]]
+    };
+    dieCtx.fillStyle = '#3a3733';
+    (pips[value] || []).forEach(function(pt){
+      dieCtx.beginPath();
+      dieCtx.arc(pt[0], pt[1], 3.6, 0, Math.PI * 2);
+      dieCtx.fill();
+    });
+    if (!value){
+      dieCtx.fillStyle = 'rgba(58,55,50,.34)';
+      dieCtx.font = '20px "Bradley Hand","Chalkboard SE",cursive';
+      dieCtx.textAlign = 'center';
+      dieCtx.textBaseline = 'middle';
+      dieCtx.fillText('?', 0, 1);
+    }
+    dieCtx.restore();
+  }
+
+  function shakeDie(){
+    diePad.classList.remove('rolling');
+    void diePad.offsetWidth;
+    diePad.classList.add('rolling');
+    setTimeout(function(){ diePad.classList.remove('rolling'); }, 460);
+  }
+
+  function showWinner(){
+    if (!state || state.winner == null || winnerShown) return;
+    winnerShown = true;
+    const c = COLORS[state.winner];
+    overlay.innerHTML =
+      '<div class="card">' +
+        '<h2 class="card-title">' + esc(who(state.winner)) + ' wins!</h2>' +
+        '<p class="card-copy">all four pencils home.</p>' +
+        '<div class="card-actions">' +
+          '<button class="sketch-btn primary" id="again" type="button">' + (roomMode ? 'leave room' : 'new game') + '</button>' +
+          '<button class="sketch-btn" id="dismiss" type="button">look at the board</button>' +
+        '</div>' +
+      '</div>';
+    overlay.classList.add('show');
+    document.getElementById('again').addEventListener('click', newGame);
+    document.getElementById('dismiss').addEventListener('click', function(){ overlay.classList.remove('show'); });
+  }
+
+  /* ---------- page chrome ---------- */
+
+  function setAccent(root, hex, washAlpha, glowAlpha){
+    root.style.setProperty('--accent', hex);
+    root.style.setProperty('--accent-wash', rgba(hex, washAlpha));
+    root.style.setProperty('--accent-glow', rgba(hex, glowAlpha));
+  }
+
+  /* the page takes the colour of the seated player online, and of the pencil whose turn it is locally. */
+  function applyColors(){
+    if (!state) return;
+    const seat = (roomMode && mySeat != null) ? mySeat : state.turn;
+    const mine = COLORS[seat];
+    const turn = COLORS[state.turn];
+    setAccent(document.documentElement, mine.hex, 0.085, 0.24);
+    document.documentElement.style.setProperty('--turn', turn.hex);
+    document.documentElement.style.setProperty('--turn-wash', rgba(turn.hex, 0.14));
+    document.documentElement.style.setProperty('--turn-ring', rgba(turn.hex, 0.5));
+    turnChip.style.background = turn.hex;
+  }
+
+  function turnWording(){
+    if (!state) return {name:'ludo', hint:'', mine:false};
+    if (state.winner != null) return {name: who(state.winner), hint: 'wins', mine: false};
+    if (!state.started) return {name: 'waiting', hint: 'for players', mine: false};
+    const p = state.players[state.turn];
+    if (isMyTurn()){
+      return {
+        name: 'your turn',
+        hint: state.rolled ? 'pick a pencil' : 'roll the die',
+        mine: true
+      };
+    }
+    if (p.online === false) return {name: who(state.turn), hint: 'is away', mine: false};
+    return {name: who(state.turn), hint: state.rolled ? 'rolled ' + state.die : 'to roll', mine: false};
+  }
+
+  function updateUI(){
+    if (!state) return;
+    const t = turnWording();
+    statusEl.textContent = t.name;
+    turnHintEl.textContent = t.hint;
+    turnBanner.classList.toggle('mine', t.mine);
+
+    // the banner carries the turn; the line below carries what just happened or what to do next.
+    let line = state.message;
+    if (state.started && state.winner == null && isMyTurn()){
+      if (state.rolled) line = 'tap a glowing pencil to move it.';
+      else if (canAct()) line = 'tap the die in the middle, or press roll.';
+    } else if (state.started && state.winner == null && !roomMode){
+      line = state.message;
+    }
+    messageEl.textContent = line;
+
+    const you = (roomMode && mySeat != null);
+    youPill.classList.toggle('show', you);
+    if (you){
+      youText.textContent = 'you are ' + colorName(mySeat);
+      youPill.querySelector('i').style.background = COLORS[mySeat].hex;
+    }
+
+    const skip = roomMode && window.PaperRoom && PaperRoom.role === 'host' &&
+      state.started && state.winner == null && state.players[state.turn].online === false;
+    newBtn.disabled = roomMode;
+    newBtn.title = roomMode ? 'In a room — open the room panel to leave' : 'New game';
+    rollBtn.disabled = !canAct() && !skip;
+    rollBtn.textContent = skip ? 'skip turn' : pending ? 'waiting…'
+      : (state.winner != null ? 'game over'
+      : (!state.started ? 'waiting'
+      : (state.rolled ? 'pick a pencil'
+      : (isMyTurn() ? 'roll' : 'waiting'))));
+    diePad.disabled = rollBtn.disabled;
+    diePad.classList.toggle('can-roll', !rollBtn.disabled && canAct());
+
+    railEl.innerHTML = state.players.map(function(pl, i){
+      const cur = i === state.turn && state.started && state.winner == null;
+      const mine = roomMode && i === mySeat;
+      const away = pl.online === false;
+      const empty = away && (!pl.name || pl.name.toLowerCase() === colorName(i));
+      const home = pl.tokens.filter(function(v){ return v === 56; }).length;
+      const out = pl.tokens.filter(function(v){ return v >= 0 && v < 56; }).length;
+      const tag = mine ? 'you' : (empty ? '' : (away ? 'away' : (roomMode && i === 0 ? 'host' : '')));
+      const meta = empty ? 'empty' : away ? '—' : (home ? home + ' home' : out ? out + ' out' : 'base');
+      return '<li class="rail-row' + (cur ? ' current' : '') + (away ? ' out' : '') + '">' +
+        '<span class="rail-dot" style="background:' + COLORS[i].hex + '"></span>' +
+        '<span class="rail-name">' + esc(pl.name) + (tag ? '<span class="rail-tag">' + tag + '</span>' : '') + '</span>' +
+        '<span class="rail-meta">' + meta + '</span>' +
+      '</li>';
+    }).join('');
+
+    applyColors();
+    drawDie(state.die);
+  }
+
+  /* ---------- room wiring ---------- */
+
+  function handleRoomAction(action, seat){
+    if (!roomStarted || !state || state.winner != null) return false;
+    if (seat !== state.turn) return false;
+    if (!action) return false;
+    if (action.type === 'rollRequest') return doRoll();
+    if (action.type === 'move') return doMove(action.token, true);
+    return false;
+  }
+
+  function initRoom(){
+    if (!window.PaperRoom) return;
+    PaperRoom.init({
+      gameId: 'ludo',
+      gameName: 'ludo',
+      maxPlayers: 4,
+      minPlayers: 2,
+      canStart: true,
+      roomBtn: 'roomBtn',
+      seatNames: ['red', 'green', 'yellow', 'blue'],
+      seatColors: COLORS.map(function(c){ return c.hex; }),
+      onAction: handleRoomAction,
+      getSnapshot: function(){ return state; },
+      applySnapshot: function(snap){
+        if (!snap) return;
+        state = snap;
+        roomStarted = !!snap.started || snap.winner != null;
+        roomMode = true;
+        pending = false;
+        anim = null;
+        if (snap.winner == null){
+          winnerShown = false;
+          overlay.classList.remove('show');
+          overlay.innerHTML = '';
+        } else if (!winnerShown){
+          overlay.classList.remove('show');
+          overlay.innerHTML = '';
+        }
+        updateUI();
+        render(performance.now());
+        if (state.winner != null && !winnerShown) setTimeout(showWinner, 350);
+      },
+      onSeat: function(seat, players){
+        roomMode = true;
+        mySeat = seat;
+        if (!roomStarted && (seat === 0 || state.winner == null)) state = waitingState(players || []);
+        updateUI();
+        render(performance.now());
+      },
+      onPlayers: function(players){
+        if (!state) return;
+        (players || []).forEach(function(p){
+          if (state.players[p.seat]) state.players[p.seat].online = p.online !== false;
+        });
+        if (roomMode && !roomStarted && state.winner == null){
+          state = waitingState(players || []);
+        }
+        updateUI();
+        render(performance.now());
+      },
+      onStart: function(players){
+        startOnline(players);
+      },
+      onLeave: function(){
+        startLocal();
+      }
+    });
+  }
+
+  rollBtn.addEventListener('click', roll);
+  newBtn.addEventListener('click', newGame);
+  diePad.addEventListener('click', roll);
+
+  canvas.addEventListener('pointerdown', function(e){
+    if (!state || !state.started || state.winner != null) return;
+    if (!isMyTurn() || !state.rolled) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const moves = legalMovesForCurrent();
+    let best = null;
+    let bestD = cell * 0.5;
+    for (let i = 0; i < moves.length; i++){
+      const pos = tokenPosition(state.turn, moves[i]);
+      const d = Math.hypot(mx - pos.x, my - pos.y);
+      if (d < bestD){ bestD = d; best = moves[i]; }
+    }
+    if (best != null) requestMove(best);
+  });
+
+  overlay.addEventListener('click', function(e){
+    if (e.target === overlay) overlay.classList.remove('show');
+  });
+
+  window.addEventListener('keydown', function(e){
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+    if (document.querySelector('.pg-room-overlay.show')) return;
+    if (e.key === 'n' || e.key === 'N'){ if (roomMode) return; newGame(); return; }
+    if (e.key === 'r' || e.key === 'R'){ roll(); return; }
+    if (e.key === 'Escape') overlay.classList.remove('show');
+  });
+
+  window.addEventListener('resize', resize);
+  if (window.ResizeObserver){
+    new ResizeObserver(resize).observe(canvas);
+  }
+
+  function loop(now){
+    render(now);
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  startLocal();
+  initRoom();
+  requestAnimationFrame(loop);
+
+  window.ludo = {
+    get state(){ return state; },
+    roll: roll,
+    move: requestMove,
+    startLocal: startLocal,
+    updateUI: updateUI,
+    render: render
+  };
+})();
+</script>
+</body>
+</html>
