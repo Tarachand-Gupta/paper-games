@@ -974,6 +974,7 @@
   let result = null;
   let pendingPromotion = null;
   let animations = [];
+  let animationFrame = null;
   let modeAI = true;
   let thinking = false;
   let aiToken = 0;
@@ -1232,9 +1233,21 @@
     canvas.classList.toggle('waiting', !!result || thinking);
   }
 
+  function stopAnimations(){
+    animations = [];
+    if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+    animationFrame = null;
+  }
+
+  function animatePieces(now){
+    render(now);
+    animationFrame = animations.length ? requestAnimationFrame(animatePieces) : null;
+  }
+
   function addAnimation(m, piece){
     const now = performance.now();
     animations.push({piece: piece, from: {x: m.from.x, y: m.from.y}, to: {x: m.to.x, y: m.to.y}, start: now, dur: 170});
+    if (animationFrame === null) animationFrame = requestAnimationFrame(animatePieces);
     if (m.castle){
       const y = m.from.y;
       const fromX = m.castle === 'K' ? 7 : 0;
@@ -1452,7 +1465,7 @@
     hover = null;
     result = null;
     pendingPromotion = null;
-    animations = [];
+    stopAnimations();
     overDismissed = false;
     overlay.classList.remove('show');
     overlay.innerHTML = '';
@@ -1482,7 +1495,7 @@
     promo.innerHTML = '';
     pendingPromotion = null;
     result = null;
-    animations = [];
+    stopAnimations();
     game = history.pop().state;
     if (modeAI && game.turn === 'b' && history.length){
       game = history.pop().state;
@@ -1623,6 +1636,7 @@
       },
       applySnapshot: function(snap){
         if (!snap || !snap.game) return;
+        stopAnimations();
         roomMode = true;
         game = snap.game;
         history = (snap.moves || []).map(function(m){
