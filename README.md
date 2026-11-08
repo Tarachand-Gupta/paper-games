@@ -43,7 +43,7 @@ The pages are plain HTML/CSS/JS, so they also work on Cloudflare Pages or GitHub
 ## Known limits
 
 - No accounts, rankings, or global room list.
-- A room only lives while someone is in it: if everybody closes the tab, the game is gone. (Persisting rooms needs a server; that is the next step if this grows.)
+- A room only lives while at least one tab stays connected. Reload one player at a time so the other can hold the room. If everybody reloads or closes together, the game is gone; rejoin attempts time out with an explanation, clear the stale resume prompt, and let you create a fresh room. (Persisting an empty room needs a server.)
 - A seat belongs to the browser that claimed it. Rejoining from another device cannot take over a seat mid-game — it gets the next free one.
 - Offline seats are skipped; if every rival leaves, the last player plays out the board alone.
 - No hidden-information games yet.

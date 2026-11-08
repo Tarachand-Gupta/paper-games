@@ -14,6 +14,7 @@
   const SEAT_COLORS = ['#bf5a4e', '#6f8f5f', '#c99a2c', '#5f7f9f'];
   const HOST_SILENCE = 6500;   // ms without a host word before we elect a new one
   const PEER_SILENCE = 7000;   // ms without a ping before the host marks a seat away
+  const JOIN_ATTEMPTS = 20;    // about 29s: WebRTC can be slow to find a relay path
 
   let opts = {};
   let modal = null;
@@ -242,6 +243,7 @@
       else if (act === 'copy') copyLink(el);
       else if (act === 'leave') leaveRoom();
       else if (act === 'start') startRoom();
+      else if (act === 'cancel') leaveRoom();
       else if (act === 'size'){ selectedSize = Math.min(4, Math.max(2, +el.dataset.size || 4)); render(); }
       else if (act === 'remove') removePlayer(+el.dataset.seat);
       else if (act === 'rejoin'){
@@ -289,6 +291,15 @@
 
   function busyHTML(message){
     return '<div class="pg-busy"><span class="pg-pencil"></span><br>' + esc(message) + '</div>';
+  }
+
+  function joiningHTML(){
+    return '' +
+      '<div class="pg-room-head"><h2>joining the room</h2><button class="pg-x" data-act="cancel" aria-label="Cancel">×</button></div>' +
+      '<div class="pg-code-box"><span class="pg-code">' + esc(displayCode(code || '-------')) + '</span></div>' +
+      busyHTML('looking for the other player…') +
+      '<p class="pg-room-sub">keep this page open. connecting can take a few seconds; we will keep trying.</p>' +
+      '<div class="pg-room-actions"><button class="pg-btn" data-act="cancel">cancel</button></div>';
   }
 
   function idleHTML(){
@@ -390,6 +401,10 @@
   function render(){
     if (!bodyEl) return;
     if (busy){ bodyEl.innerHTML = busyHTML('opening the page…'); return; }
+    if (role === 'guest' && mySeat == null){
+      bodyEl.innerHTML = joiningHTML();
+      return;
+    }
     if (!role){
       if (notice){
         bodyEl.innerHTML =
@@ -610,7 +625,7 @@
     clearTimeout(electTimer);
     const me = players.find(function(p){ return p.id === myId; });
     if (me) mySeat = me.seat;
-    clearInterval(joinTimer);
+    if (mySeat != null) clearInterval(joinTimer);
     error = '';
     if (opts.applySnapshot && msg.state) opts.applySnapshot(msg.state);
     if (opts.onSeat) opts.onSeat(mySeat, players);
@@ -734,6 +749,13 @@
   function onMsg(msg, peer){
     if (!msg || !msg.type) return;
 
+    // Do not let a roster that predates our join get applied by the newer-host
+    // path below. Until admitted, the only useful state is one containing us.
+    if (role === 'guest' && mySeat == null && msg.type === 'state'){
+      const admitted = Array.isArray(msg.players) && msg.players.some(function(p){ return p.id === myId; });
+      if (!admitted) return;
+    }
+
     // A newer host supersedes us. Equal-epoch claims are settled by seat order.
     if (msg.type === 'state' && msg.host && msg.host !== myId){
       const newer = typeof msg.epoch === 'number' && msg.epoch > epoch;
@@ -830,9 +852,17 @@
           online: true,
           lastSeen: Date.now()
         });
+        // Two-player games need no separate start button: the second seat
+        // arriving starts the room and reveals the board on both pages.
+        if (opts.canStart === false && !started && onlineCount() >= 2){
+          started = true;
+          if (opts.onStart) opts.onStart(players);
+          rememberRoom();
+        }
         broadcast();
         if (opts.onPlayers) opts.onPlayers(players);
         render();
+        if (started) close();
       } else if (msg.type === 'action'){
         const p = players.find(function(x){ return x.id === (msg.id || peer); });
         if (!p || p.online === false) return;
@@ -857,7 +887,10 @@
       }
     } else if (role === 'guest'){
       if (msg.type === 'state'){
-        if (!hostId || msg.host === hostId) applyState(msg, peer);
+        // A broadcast meant for established players is not proof that our join
+        // was accepted. Keep knocking until the roster contains this connection.
+        const admitted = Array.isArray(msg.players) && msg.players.some(function(p){ return p.id === myId; });
+        if ((!hostId || msg.host === hostId) && (mySeat != null || admitted)) applyState(msg, peer);
       } else if (msg.type === 'host-ping'){
         if (!hostId || msg.host === hostId || msg.id === hostId) lastHostSeen = Date.now();
       } else if (msg.type === 'closed' || msg.type === 'removed'){
@@ -896,6 +929,9 @@
         updateBtn();
       } else if (msg.type === 'leave' && msg.id === hostId){
         hostLost();
+      } else if (msg.type === 'peer-join'){
+        // Knock as soon as a connection exists instead of waiting for the timer.
+        if (mySeat == null) sendJoin();
       } else if (msg.type === 'peer-leave'){
         if (peer === hostPeer || peer === hostId) hostLost();
       }
@@ -948,6 +984,11 @@
     joinRoom(input ? input.value : '');
   }
 
+  function sendJoin(){
+    if (!transport || role !== 'guest' || mySeat != null) return;
+    transport.send({type: 'join', name: getName(), token: ensureSeatToken(), tokens: seatTokens()});
+  }
+
   async function joinRoom(c){
     const cc = norm(c);
     if (!valid(cc)){
@@ -979,7 +1020,7 @@
       startHostWatch();
       render();
       updateBtn();
-      t.send({type: 'join', name: getName(), token: ensureSeatToken(), tokens: seatTokens()});
+      sendJoin();
       startPing();
       joinTries = 0;
       clearInterval(joinTimer);
@@ -989,18 +1030,31 @@
           return;
         }
         joinTries++;
-        if (joinTries > 6){
+        if (joinTries > JOIN_ATTEMPTS){
           clearInterval(joinTimer);
+          clearInterval(hostWatchTimer);
+          clearInterval(pingTimer);
           if (transport){ try { transport.close(); } catch (e) {} }
           transport = null;
           role = null;
           mySeat = null;
-          error = 'no room answered. check the code, and make sure the host has the page open.';
+          players = [];
+          started = false;
+          roomSize = 0;
+          hostId = null;
+          hostPeer = null;
+          epoch = 0;
+          pendingResume = null;
+          forgetRoom();
+          try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+          error = 'no room answered. it may have ended when everyone closed the tab. create a new room, or check the code and try again.';
+          if (opts.onLeave) opts.onLeave();
           render();
+          open();
           updateBtn();
           return;
         }
-        if (transport) transport.send({type: 'join', name: getName(), token: ensureSeatToken(), tokens: seatTokens()});
+        sendJoin();
       }, 1400);
     } catch (e) {
       busy = false;
